@@ -55,6 +55,8 @@ let renderer;
 let videoFeedU, videoFeedE;	// feeds from user/environment-facing cameras
 let camera;
 let controls;
+let background = 0;
+let backgroundTexture;
 
 // the menu
 let gui;
@@ -105,6 +107,8 @@ function init() {
 	document.body.appendChild( VRButton.createButton( renderer ) );	// for VR content
 	document.body.appendChild( renderer.domElement );
 	// document.getElementById('livePhoto').appendChild( renderer.domElement );
+
+	loadBackgroundImage();
 
 	createVideoFeeds();
 
@@ -187,6 +191,8 @@ function updateUniforms() {
 	raytracingSphereShaderMaterial.uniforms.halfWidthU.value = raytracingSphereShaderMaterial.uniforms.videoDistance.value*tanHalfFovHU;
 	raytracingSphereShaderMaterial.uniforms.halfHeightU.value = raytracingSphereShaderMaterial.uniforms.videoDistance.value*tanHalfFovVU;
 
+	raytracingSphereShaderMaterial.uniforms.backgroundTexture.value = backgroundTexture;
+
 	// create the points on the aperture
 
 	// create basis vectors for the camera's clear aperture
@@ -260,6 +266,7 @@ function addRaytracingSphere() {
 			centreOfObjectPlane: { value: new THREE.Vector3(0, 0, -10) },
 			designViewPosition: { value: new THREE.Vector3(0, 0, 0.02) },
 			radius: { value: 0.05 },	// radius
+			backgroundTexture: { value: backgroundTexture },
 			videoFeedUTexture: { value: videoFeedUTexture }, 
 			videoFeedETexture: { value: videoFeedETexture },
 			tanHalfFovHU: { value: 1.0 },
@@ -294,6 +301,8 @@ function addRaytracingSphere() {
 		fragmentShader: `
 			precision highp float;
 
+			#define PI 3.1415926538
+
 			varying vec3 intersectionPoint;
 			
 			// the wedge array
@@ -307,6 +316,9 @@ function addRaytracingSphere() {
 			uniform float radius;	// radius of wedge array
 			uniform vec3 centreOfObjectPlane;
 			uniform vec3 designViewPosition;
+
+			// background
+			uniform sampler2D backgroundTexture;
 
 			// video feed from user-facing camera
 			uniform sampler2D videoFeedUTexture;
@@ -474,7 +486,7 @@ function addRaytracingSphere() {
 						// lower the brightness factor, giving the light a blue tinge
 						b *= vec4(0.9, 0.9, 0.99, 1);
 					} 
-				} else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
+				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 			}
 
 			vec3 wedgeArrayDeflect(
@@ -553,7 +565,7 @@ function addRaytracingSphere() {
 						// lower the brightness factor, giving the light a blue tinge
 						b *= vec4(0.9, 0.9, 0.99, 1);
 					} 
-				} else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
+				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 			}
 
 			// propagate the ray to the plane of the video feed, which is a z-distance <videoDistance> away,
@@ -578,6 +590,15 @@ function addRaytracingSphere() {
 						// the ray doesn't intersect the image
 						return backgroundColor;
 				}
+			}
+
+			vec4 getColorOfBackground(
+				vec3 d
+			) {
+				float l = length(d);
+				float phi = atan(d.z, d.x) + PI;
+				float theta = acos(d.y/l);
+				return texture2D(backgroundTexture, vec2(mod(phi/(2.*PI), 1.0), 1.-theta/PI));
 			}
 
 			void main() {
@@ -607,12 +628,14 @@ function addRaytracingSphere() {
 						// the ray is travelling "forwards", in the (-z) direction;
 						// pass first through the array, then to environment-facing video feed
 						if(visible) passThroughWedgeArray(p, d, b);
-						color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));	// white
+						color = getColorOfBackground(d);
+						// color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));	// white
 					} else {
 						// the ray is travelling "backwards", in the (+z) direction;
 						// pass first through the array, then to user-facing video feed
 						if(visible) passThroughWedgeArray(p, d, b);
-						color = getColorOfVideoFeed(p, d, b, videoDistance, videoFeedUTexture, halfWidthU, halfHeightU, vec4(1, 0, 0, 1.0));	// white
+						color = getColorOfBackground(d);
+						// color = getColorOfVideoFeed(p, d, b, videoDistance, videoFeedUTexture, halfWidthU, halfHeightU, vec4(1, 0, 0, 1.0));	// white
 					}
 		
 					// finally, multiply by the brightness factor and add to gl_FragColor
@@ -652,6 +675,11 @@ function createGUI() {
 		'Restart video streams': function() { 
 			recreateVideoFeeds(); 
 			postStatus("Restarting video stream");
+		},
+		background: function() {
+			background = (background + 1) % 5;
+			loadBackgroundImage();
+			backgroundControl.name( background2String() );	
 		},
 		vrControlsVisible: function() {
 			GUIMesh.visible = !GUIMesh.visible;
@@ -739,6 +767,34 @@ function addXRInteractivity() {
 	GUIMesh.rotation.x = -Math.PI/4;
 	GUIMesh.scale.setScalar( 2 );
 	group.add( GUIMesh );	
+}
+
+function loadBackgroundImage() {
+	const textureLoader = new THREE.TextureLoader();
+	// textureLoader.crossOrigin = "Anonymous";
+
+	let filename;
+	switch (background) { 
+		case 1: 
+			filename = '360-180 Glasgow University - Eastern Square.jpg';	// https://www.flickr.com/photos/pano_philou/1141564032
+			break;
+		case 2: 
+			filename = 'Mugdock Woods 6 Milngavie Scotland Equirectangular.jpg';	// https://www.flickr.com/photos/gawthrop/3485817556
+			break;
+		case 3: 
+			filename = 'Bluebells_13_Mugdock_Woods_Scotland-Equirectangular.jpg';	// https://www.flickr.com/photos/gawthrop/49889830418
+			break;
+		case 4: 
+			filename = '360-180 The Glencoe Pass And The Three Sisters.jpg';	// https://www.flickr.com/photos/pano_philou/1140758031
+			break;
+		case 0: 
+		default:
+			filename = '360-180 Glasgow University - Western Square.jpg';	// https://www.flickr.com/photos/pano_philou/1041580126
+			// 'Tower_University_Glasgow_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49890100126
+			// 'Saddle_05_Arran_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49889356918
+		}
+
+	backgroundTexture = textureLoader.load(filename);
 }
 
 function createVideoFeeds() {
