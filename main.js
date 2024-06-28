@@ -44,7 +44,7 @@ let alpha = 0.0;
 let focusDistance = 1e8;
 let noOfRays = 1;
 
-let raytracingSphereRadius = 10.0;	// what this code does should be independent of this value, but isn't (?)
+let raytracingSphereRadius = 100.0;	// what this code does should be independent of this value, but isn't (?)
 
 // "internal" variables
 let raytracingSphere;
