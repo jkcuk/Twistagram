@@ -685,6 +685,10 @@ function createGUI() {
 	}
 }
 
+function guiMeshVisible2String() {
+	return 'VR controls '+(GUIMesh.visible?'visible':'hidden');
+}
+
 function addXRInteractivity() {
 	// see https://github.com/mrdoob/three.js/blob/master/examples/webxr_vr_sandbox.html
 
