@@ -61,7 +61,7 @@ let backgroundTexture;
 // the menu
 let gui;
 let GUIMesh;
-let vrControlsVisibleControl, backgroundControl;
+let vrControlsVisibleControl, backgroundControl, componentYControl;
 
 // lift the component up to eye level (in case of VR only)
 let componentY = 0.0;
@@ -198,15 +198,16 @@ function updateUniforms() {
 	raytracingSphereShaderMaterial.uniforms.showVideoFeed.value = (background == 0);
 	raytracingSphereShaderMaterial.uniforms.backgroundTexture.value = backgroundTexture;
 
-	// create the points on the aperture
-
-	// create basis vectors for the camera's clear aperture
 	let viewDirection = new THREE.Vector3();
 	let apertureBasisVector1 = new THREE.Vector3();
 	let apertureBasisVector2 = new THREE.Vector3();
 	camera.getWorldDirection(viewDirection);
 	// if(counter < 10) console.log(`viewDirection = (${viewDirection.x.toPrecision(2)}, ${viewDirection.y.toPrecision(2)}, ${viewDirection.z.toPrecision(2)})`);
 
+	// if the component is "glued" to the eye, place it in front of the camera
+	raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.y = componentY;	// camera.position.y;
+	
+	// create basis vectors for the camera's clear aperture
 	if((viewDirection.x == 0.0) && (viewDirection.y == 0.0)) {
 		// viewDirection is along z direction
 		apertureBasisVector1.crossVectors(viewDirection, new THREE.Vector3(1, 0, 0)).normalize();
@@ -670,6 +671,8 @@ function createGUI() {
 		'Period, <i>p</i> (mm)': 1000.*raytracingSphereShaderMaterial.uniforms.period.value,
 		'Rotation angle (&deg;)': alpha / Math.PI * 180.,
 		'Stretch factor': raytracingSphereShaderMaterial.uniforms.stretchFactor.value,
+		componentY: componentY,
+		makeEyeLevel: function() { componentY = camera.position.y; componentYControl.setValue(componentY); },
 		'Horiz. FOV (&deg;)': fovScreen,
 		'Aperture radius (mm)': 1000.*raytracingSphereShaderMaterial.uniforms.apertureRadius.value,
 		'tan<sup>-1</sup>(focus. dist.) (m)': Math.atan(focusDistance),
@@ -700,6 +703,9 @@ function createGUI() {
 	// gui.add( params, 'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)', -0.5*Math.PI, 0.5*Math.PI).onChange( (f) => { raytracingSphereShaderMaterial.uniforms.additionalF.value = Math.tan(f); } );
 	gui.add( params, 'Rotation angle (&deg;)', -90, 90).onChange( (a) => { alpha = a/180.0*Math.PI; } );
 	gui.add( params, 'Stretch factor', 0.1, 10 ).onChange( (m) => { raytracingSphereShaderMaterial.uniforms.stretchFactor.value = m; } );
+	componentYControl = gui.add( params, 'componentY',  0, 3, 0.001).name( "<i>y</i><sub>centre</sub>" ).onChange( (y) => { componentY = y; } );
+	gui.add( params, 'makeEyeLevel' ).name( 'Move resonator to eye level' );
+	
 	gui.add( params, 'Point (virtual) cam. forward (in -<b>z</b> direction)');
 	gui.add( params, 'Horiz. FOV (&deg;)', 10, 170, 1).onChange( setScreenFOV );
 	gui.add( params, 'Aperture radius (mm)', 0, 10).onChange( (r) => { raytracingSphereShaderMaterial.uniforms.apertureRadius.value = r/1000.; } );
