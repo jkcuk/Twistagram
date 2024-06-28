@@ -207,7 +207,9 @@ function updateUniforms() {
 	// if the component is "glued" to the eye, place it in front of the camera
 	raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.y = componentY;	// camera.position.y;
 	raytracingSphereShaderMaterial.uniforms.designViewPosition.value.y = componentY;
-	
+	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.y = componentY;
+	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.x = raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.x - 0.064;
+
 	// create basis vectors for the camera's clear aperture
 	if((viewDirection.x == 0.0) && (viewDirection.y == 0.0)) {
 		// viewDirection is along z direction
@@ -270,6 +272,7 @@ function addRaytracingSphere() {
 			stretchFactor: { value: 1.0 },
 			additionalF: { value: 1e10 },	// additional focal length of lenslet array (an additional lens in the same plane)
 			centreOfWedgeArray: { value: new THREE.Vector3(0, 0, 0) },	// principal point of lenslet (0, 0)
+			centreOfPerfectRotator: { value: new THREE.Vector3(0, 0, 0) },
 			centreOfObjectPlane: { value: new THREE.Vector3(0, 0, -10) },
 			designViewPosition: { value: new THREE.Vector3(0, 0, 0.02) },
 			radius: { value: 0.05 },	// radius
@@ -321,6 +324,7 @@ function addRaytracingSphere() {
 			uniform float period;	// period of array
 			uniform float additionalF;	// additional focal length (an additional lens in the same plane)
 			uniform vec3 centreOfWedgeArray;	// centre of wedge array
+			uniform vec3 centreOfPerfectRotator;
 			uniform float radius;	// radius of wedge array
 			uniform vec3 centreOfObjectPlane;
 			uniform vec3 designViewPosition;
@@ -577,6 +581,37 @@ function addRaytracingSphere() {
 				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 			}
 
+			void perfectRotatorDeflect(
+				inout vec3 p,
+				inout vec3 d
+			) {
+				p = centreOfPerfectRotator + vec3(rotate(p.xy - centreOfPerfectRotator.xy, cosAlpha, -sinAlpha), 0.);
+				d = vec3(rotate(d.xy, cosAlpha, -sinAlpha), d.z);
+			}
+
+			void passThroughPerfectRotator(
+				inout vec3 p, 
+				inout vec3 d, 
+				inout vec4 b
+			) {
+				// if(propagateForwardToZPlane(p, d, centreOfPerfectRotator.z)) {
+					// there is an intersection with the plane of this component in the ray's forward direction
+					
+					// does the intersection point lie within the radius?
+					vec2 cixy = p.xy - centreOfPerfectRotator.xy;
+					float r2 = dot(cixy, cixy);	// length squared of vector r
+					if(r2 < radius*radius) {
+						// the intersection point lies inside the radius, so the component does something to the ray
+
+						// change the light ray accordingly 
+						perfectRotatorDeflect(p, d);
+
+						// lower the brightness factor, giving the light a blue tinge
+						b *= vec4(0.9, 0.9, 0.99, 1);
+					} 
+				// } // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
+			}
+
 			// propagate the ray to the plane of the video feed, which is a z-distance <videoDistance> away,
 			// and return either the color of the corresponding video-feed texel or the background color
 			vec4 getColorOfVideoFeed(
@@ -637,13 +672,15 @@ function addRaytracingSphere() {
 						// the ray is travelling "forwards", in the (-z) direction;
 						// pass first through the array, then to environment-facing video feed
 						if(visible) passThroughWedgeArray(p, d, b);
+						passThroughPerfectRotator(p, d, b);
 						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));
 						else color = getColorOfBackground(d);
 					} else {
 						// the ray is travelling "backwards", in the (+z) direction;
 						// pass first through the array, then to user-facing video feed
 						if(visible) passThroughWedgeArray(p, d, b);
-						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));
+						passThroughPerfectRotator(p, d, b);
+						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, videoDistance, videoFeedUTexture, halfWidthU, halfHeightU, vec4(1, 1, 1, 1.0));
 						else color = getColorOfBackground(d);
 					}
 		
