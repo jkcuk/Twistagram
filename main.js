@@ -676,7 +676,7 @@ function createGUI() {
 	gui.add( params, 'Show/hide info');
 
 	if(renderer.xr.enabled) {
-		vrControlsVisibleControl = gui.add( GUIParams, 'vrControlsVisible' );
+		vrControlsVisibleControl = gui.add( params, 'vrControlsVisible' );
 
 		// create the GUI mesh at the end to make sure that it includes all controls
 		GUIMesh = new HTMLMesh( gui.domElement );
