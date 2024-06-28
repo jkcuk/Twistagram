@@ -206,6 +206,7 @@ function updateUniforms() {
 
 	// if the component is "glued" to the eye, place it in front of the camera
 	raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.y = componentY;	// camera.position.y;
+	raytracingSphereShaderMaterial.uniforms.designViewPosition.value.y = componentY;
 	
 	// create basis vectors for the camera's clear aperture
 	if((viewDirection.x == 0.0) && (viewDirection.y == 0.0)) {
@@ -511,7 +512,7 @@ function addRaytracingSphere() {
 				vec2 cixy = intersectionPoint.xy - centreOfWedgeArray.xy;
 
 				// find the pixel centre
-				vec3 p = centreOfWedgeArray + vec3(findPixelCentre(cixy, centreOfWedgeArray.xy, 1., 0., period, period), 0.);
+				vec3 p = vec3(findPixelCentre(cixy, centreOfWedgeArray.xy, 1., 0., period, period), centreOfWedgeArray.z);
 				
 				// calculate the incident and outgoing directions for which the pixel is designed
 				vec3 i = normalize(p - designViewPosition);	// incident direction: from the design view position to the pixel centre
