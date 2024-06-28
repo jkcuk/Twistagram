@@ -61,7 +61,7 @@ let backgroundTexture;
 // the menu
 let gui;
 let GUIMesh;
-let vrControlsVisibleControl;
+let vrControlsVisibleControl, backgroundControl;
 
 // lift the component up to eye level (in case of VR only)
 let componentY = 0.0;
@@ -145,7 +145,11 @@ function init() {
 }
 
 function animate() {
-	requestAnimationFrame( animate );
+	renderer.setAnimationLoop( render );
+}
+
+function render() {
+	// requestAnimationFrame( animate );
 
 	// stats.begin();
 
@@ -191,6 +195,7 @@ function updateUniforms() {
 	raytracingSphereShaderMaterial.uniforms.halfWidthU.value = raytracingSphereShaderMaterial.uniforms.videoDistance.value*tanHalfFovHU;
 	raytracingSphereShaderMaterial.uniforms.halfHeightU.value = raytracingSphereShaderMaterial.uniforms.videoDistance.value*tanHalfFovVU;
 
+	raytracingSphereShaderMaterial.uniforms.showVideoFeed.value = (background == 0);
 	raytracingSphereShaderMaterial.uniforms.backgroundTexture.value = backgroundTexture;
 
 	// create the points on the aperture
@@ -267,6 +272,7 @@ function addRaytracingSphere() {
 			designViewPosition: { value: new THREE.Vector3(0, 0, 0.02) },
 			radius: { value: 0.05 },	// radius
 			backgroundTexture: { value: backgroundTexture },
+			showVideoFeed: { value: true },
 			videoFeedUTexture: { value: videoFeedUTexture }, 
 			videoFeedETexture: { value: videoFeedETexture },
 			tanHalfFovHU: { value: 1.0 },
@@ -319,6 +325,7 @@ function addRaytracingSphere() {
 
 			// background
 			uniform sampler2D backgroundTexture;
+			uniform bool showVideoFeed;
 
 			// video feed from user-facing camera
 			uniform sampler2D videoFeedUTexture;
@@ -628,14 +635,14 @@ function addRaytracingSphere() {
 						// the ray is travelling "forwards", in the (-z) direction;
 						// pass first through the array, then to environment-facing video feed
 						if(visible) passThroughWedgeArray(p, d, b);
-						color = getColorOfBackground(d);
-						// color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));	// white
+						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));
+						else color = getColorOfBackground(d);
 					} else {
 						// the ray is travelling "backwards", in the (+z) direction;
 						// pass first through the array, then to user-facing video feed
 						if(visible) passThroughWedgeArray(p, d, b);
-						color = getColorOfBackground(d);
-						// color = getColorOfVideoFeed(p, d, b, videoDistance, videoFeedUTexture, halfWidthU, halfHeightU, vec4(1, 0, 0, 1.0));	// white
+						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));
+						else color = getColorOfBackground(d);
 					}
 		
 					// finally, multiply by the brightness factor and add to gl_FragColor
@@ -677,7 +684,7 @@ function createGUI() {
 			postStatus("Restarting video stream");
 		},
 		background: function() {
-			background = (background + 1) % 5;
+			background = (background + 1) % 6;
 			loadBackgroundImage();
 			backgroundControl.name( background2String() );	
 		},
@@ -702,6 +709,8 @@ function createGUI() {
 		0.5*Math.PI
 	).onChange( (a) => { focusDistance = Math.tan(a); } );
 	gui.add( params, 'No of rays', 1, 100, 1).onChange( (n) => { noOfRays = n; } );
+
+	backgroundControl = gui.add( params, 'background' ).name( background2String() );
 
 	gui.add( params, 'Restart video streams');
 	gui.add( params, 'Env.-facing cam. (&deg;)', 10, 170, 1).onChange( (fov) => { fovVideoFeedE = fov; updateUniforms(); });   
@@ -770,31 +779,49 @@ function addXRInteractivity() {
 }
 
 function loadBackgroundImage() {
-	const textureLoader = new THREE.TextureLoader();
-	// textureLoader.crossOrigin = "Anonymous";
+	if(background != 0) {
+		const textureLoader = new THREE.TextureLoader();
+		// textureLoader.crossOrigin = "Anonymous";
 
-	let filename;
+		let filename;
+		switch (background) { 
+			case 1:
+				filename = '360-180 Glasgow University - Western Square.jpg';	// https://www.flickr.com/photos/pano_philou/1041580126
+				break;
+			case 2: 
+				filename = '360-180 Glasgow University - Eastern Square.jpg';	// https://www.flickr.com/photos/pano_philou/1141564032
+				break;
+			case 3: 
+				filename = 'Mugdock Woods 6 Milngavie Scotland Equirectangular.jpg';	// https://www.flickr.com/photos/gawthrop/3485817556
+				break;
+			case 4: 
+				filename = 'Bluebells_13_Mugdock_Woods_Scotland-Equirectangular.jpg';	// https://www.flickr.com/photos/gawthrop/49889830418
+				break;
+			case 5: 
+				filename = '360-180 The Glencoe Pass And The Three Sisters.jpg';	// https://www.flickr.com/photos/pano_philou/1140758031
+				break;
+			default:
+				filename = '???';
+				// 'Tower_University_Glasgow_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49890100126
+				// 'Saddle_05_Arran_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49889356918
+			}
+
+		backgroundTexture = textureLoader.load(filename);
+	}
+}
+
+function background2String() {
 	switch (background) { 
-		case 1: 
-			filename = '360-180 Glasgow University - Eastern Square.jpg';	// https://www.flickr.com/photos/pano_philou/1141564032
-			break;
-		case 2: 
-			filename = 'Mugdock Woods 6 Milngavie Scotland Equirectangular.jpg';	// https://www.flickr.com/photos/gawthrop/3485817556
-			break;
-		case 3: 
-			filename = 'Bluebells_13_Mugdock_Woods_Scotland-Equirectangular.jpg';	// https://www.flickr.com/photos/gawthrop/49889830418
-			break;
-		case 4: 
-			filename = '360-180 The Glencoe Pass And The Three Sisters.jpg';	// https://www.flickr.com/photos/pano_philou/1140758031
-			break;
-		case 0: 
-		default:
-			filename = '360-180 Glasgow University - Western Square.jpg';	// https://www.flickr.com/photos/pano_philou/1041580126
-			// 'Tower_University_Glasgow_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49890100126
-			// 'Saddle_05_Arran_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49889356918
-		}
-
-	backgroundTexture = textureLoader.load(filename);
+	case 0: return 'Live video feed(s)';
+	case 1: return 'Glasgow University, West Quadrangle';	// '360-180 Glasgow University - Western Square.jpg'	// https://www.flickr.com/photos/pano_philou/1041580126
+	case 2: return 'Glasgow University, East Quadrangle';	// '360-180 Glasgow University - Eastern Square.jpg'	// https://www.flickr.com/photos/pano_philou/1141564032
+	case 3: return 'Mugdock';	// 'Mugdock Woods 6 Milngavie Scotland Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/3485817556
+	case 4: return 'Mugdock bluebells';	// 'Bluebells_13_Mugdock_Woods_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49889830418
+	case 5: return 'Glencoe';	// '360-180 The Glencoe Pass And The Three Sisters.jpg'	// https://www.flickr.com/photos/pano_philou/1140758031
+	default: return 'Undefined';		
+		// 'Tower_University_Glasgow_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49890100126
+		// 'Saddle_05_Arran_Scotland-Equirectangular.jpg'	// https://www.flickr.com/photos/gawthrop/49889356918
+	}
 }
 
 function createVideoFeeds() {
