@@ -19,6 +19,12 @@ import * as THREE from 'three';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+import { DragControls } from 'three/addons/controls/DragControls.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
+import { InteractiveGroup } from 'three/addons/interactive/InteractiveGroup.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
 let name = 'Twistagram';
 
 // variables that are not uniforms
@@ -49,8 +55,12 @@ let renderer;
 let videoFeedU, videoFeedE;	// feeds from user/environment-facing cameras
 let camera;
 let controls;
+
+// the menu
 let gui;
-	
+let GUIMesh;
+let vrControlsVisibleControl;
+
 // the status text area
 let status = document.createElement('div');
 let statusTime;	// the time the last status was posted
@@ -64,8 +74,11 @@ let storedPhotoDescription;
 let storedPhotoInfoString;
 let showingStoredPhoto = false;
 
-// my Canon EOS450D
+// my Canon EOS450D, recorded with the iPad, sent to the Mac, and then exported as Audio only
 const click = new Audio('./click.m4a');
+
+// a piece of paper being crumpled, recorded with the iPad, sent to the Mac, and then exported as Audio only
+const bin = new Audio('./bin.m4a');
 
 init();
 animate();
@@ -99,6 +112,23 @@ function init() {
 
 	// the controls menu
 	createGUI();
+
+	// check if VR is supported (see https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/isSessionSupported)...
+	// if (navigator.xr) {
+	if ( 'xr' in navigator ) {
+		// renderer.xr.enabled = false;
+		// navigator.xr.isSessionSupported("immersive-vr").then((isSupported) => {
+		navigator.xr.isSessionSupported( 'immersive-vr' ).then( function ( supported ) {
+			if (supported) {
+				// ... and enable the relevant features
+				renderer.xr.enabled = true;
+				// use renderer.xr.isPresenting to find out if we are in XR mode -- see https://threejs.org/docs/#api/en/renderers/webxr/WebXRManager 
+				// (and https://threejs.org/docs/#api/en/renderers/WebGLRenderer.xr, which states that renderer.xr points to the WebXRManager)
+				document.body.appendChild( VRButton.createButton( renderer ) );	// for VR content
+				addXRInteractivity();
+			}
+		});
+	}
 
 	createInfo();
 	refreshInfo();
@@ -616,7 +646,11 @@ function createGUI() {
 		'Restart video streams': function() { 
 			recreateVideoFeeds(); 
 			postStatus("Restarting video stream");
-		}
+		},
+		vrControlsVisible: function() {
+			GUIMesh.visible = !GUIMesh.visible;
+			vrControlsVisibleControl.name( guiMeshVisible2String() );
+		},
 	}
 
 	gui.add( params, 'Visible').onChange( (v) => { raytracingSphereShaderMaterial.uniforms.visible.value = v; } );
@@ -640,6 +674,61 @@ function createGUI() {
 	gui.add( params, 'User-facing cam. (&deg;)', 10, 170, 1).onChange( (fov) => { fovVideoFeedU = fov; updateUniforms(); });  
 	gui.add( params, 'tan<sup>-1</sup>(video dist.)', Math.atan(0.1), 0.5*Math.PI).onChange( (a) => { raytracingSphereShaderMaterial.uniforms.videoDistance.value = Math.tan(a); } );
 	gui.add( params, 'Show/hide info');
+
+	if(renderer.xr.enabled) {
+		vrControlsVisibleControl = gui.add( GUIParams, 'vrControlsVisible' );
+
+		// create the GUI mesh at the end to make sure that it includes all controls
+		GUIMesh = new HTMLMesh( gui.domElement );
+		GUIMesh.visible = false;
+		vrControlsVisibleControl.name( guiMeshVisible2String() );	// this can be called only after GUIMesh has been created
+	}
+}
+
+function addXRInteractivity() {
+	// see https://github.com/mrdoob/three.js/blob/master/examples/webxr_vr_sandbox.html
+
+	// the two hand controllers
+
+	const geometry = new THREE.BufferGeometry();
+	geometry.setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 5 ) ] );
+
+	const controller1 = renderer.xr.getController( 0 );
+	controller1.add( new THREE.Line( geometry ) );
+	scene.add( controller1 );
+
+	const controller2 = renderer.xr.getController( 1 );
+	controller2.add( new THREE.Line( geometry ) );
+	scene.add( controller2 );
+
+	//
+
+	const controllerModelFactory = new XRControllerModelFactory();
+
+	const controllerGrip1 = renderer.xr.getControllerGrip( 0 );
+	controllerGrip1.add( controllerModelFactory.createControllerModel( controllerGrip1 ) );
+	scene.add( controllerGrip1 );
+
+	const controllerGrip2 = renderer.xr.getControllerGrip( 1 );
+	controllerGrip2.add( controllerModelFactory.createControllerModel( controllerGrip2 ) );
+	scene.add( controllerGrip2 );
+
+	//
+
+	const group = new InteractiveGroup( renderer, camera );
+	group.listenToPointerEvents( renderer, camera );
+	group.listenToXRControllerEvents( controller1 );
+	group.listenToXRControllerEvents( controller2 );
+	scene.add( group );
+
+	// place this below the resonator
+	// GUIMesh = new HTMLMesh( gui.domElement );
+	GUIMesh.position.x = 0;
+	GUIMesh.position.y = resonatorY - 1.5;
+	GUIMesh.position.z = -0.4;
+	GUIMesh.rotation.x = -Math.PI/4;
+	GUIMesh.scale.setScalar( 2 );
+	group.add( GUIMesh );	
 }
 
 function createVideoFeeds() {
@@ -904,6 +993,8 @@ function showLivePhoto() {
 }
 
 function deleteStoredPhoto() {
+	bin.play();
+
 	storedPhoto = null;
 
 	showLivePhoto();
