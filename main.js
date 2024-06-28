@@ -61,6 +61,9 @@ let gui;
 let GUIMesh;
 let vrControlsVisibleControl;
 
+// lift the component up to eye level (in case of VR only)
+let componentY = 0.0;
+
 // the status text area
 let status = document.createElement('div');
 let statusTime;	// the time the last status was posted
@@ -728,7 +731,7 @@ function addXRInteractivity() {
 	// place this below the resonator
 	// GUIMesh = new HTMLMesh( gui.domElement );
 	GUIMesh.position.x = 0;
-	GUIMesh.position.y = resonatorY - 1.5;
+	GUIMesh.position.y = componentY - 1.5;
 	GUIMesh.position.z = -0.4;
 	GUIMesh.rotation.x = -Math.PI/4;
 	GUIMesh.scale.setScalar( 2 );
