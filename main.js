@@ -101,18 +101,7 @@ function init() {
 	renderer.setPixelRatio(window.devicePixelRatio);
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	// document.body.appendChild( renderer.domElement );
-
-	renderer.xr.enabled = false;
-	if ( 'xr' in navigator ) {
-		// renderer.xr.enabled = false;
-		// navigator.xr.isSessionSupported("immersive-vr").then((isSupported) => {
-		navigator.xr.isSessionSupported( 'immersive-vr' ).then( function ( supported ) {
-			if (supported) {
-				// ... and enable the relevant features
-				renderer.xr.enabled = true;
-			}
-		}
-	}
+	renderer.xr.enabled = true;
 	document.body.appendChild( VRButton.createButton( renderer ) );	// for VR content
 	document.body.appendChild( renderer.domElement );
 	// document.getElementById('livePhoto').appendChild( renderer.domElement );
@@ -131,11 +120,20 @@ function init() {
 	createGUI();
 
 	// check if VR is supported (see https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/isSessionSupported)...
-	if ( renderer.xr.enabled ) {
-		// use renderer.xr.isPresenting to find out if we are in XR mode -- see https://threejs.org/docs/#api/en/renderers/webxr/WebXRManager 
-		// (and https://threejs.org/docs/#api/en/renderers/WebGLRenderer.xr, which states that renderer.xr points to the WebXRManager)
-		document.body.appendChild( VRButton.createButton( renderer ) );	// for VR content
-		addXRInteractivity();
+	// if (navigator.xr) {
+	if ( 'xr' in navigator ) {
+		// renderer.xr.enabled = false;
+		// navigator.xr.isSessionSupported("immersive-vr").then((isSupported) => {
+		navigator.xr.isSessionSupported( 'immersive-vr' ).then( function ( supported ) {
+			if (supported) {
+				// ... and enable the relevant features
+				renderer.xr.enabled = true;
+				// use renderer.xr.isPresenting to find out if we are in XR mode -- see https://threejs.org/docs/#api/en/renderers/webxr/WebXRManager 
+				// (and https://threejs.org/docs/#api/en/renderers/WebGLRenderer.xr, which states that renderer.xr points to the WebXRManager)
+				document.body.appendChild( VRButton.createButton( renderer ) );	// for VR content
+				addXRInteractivity();
+			}
+		});
 	}
 
 	createInfo();
