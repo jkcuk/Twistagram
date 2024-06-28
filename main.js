@@ -101,7 +101,7 @@ function init() {
 	renderer.setPixelRatio(window.devicePixelRatio);
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	// document.body.appendChild( renderer.domElement );
-	renderer.xr.enabled = true;
+	renderer.xr.enabled = false;
 	document.body.appendChild( VRButton.createButton( renderer ) );	// for VR content
 	document.body.appendChild( renderer.domElement );
 	// document.getElementById('livePhoto').appendChild( renderer.domElement );
