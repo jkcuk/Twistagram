@@ -37,8 +37,11 @@ let fovVideoFeedE = 68.3;	// (environment-facing) camera
 // the FOV of the screen depends on the user's distance from the screen, of course
 let fovScreen = 140;	// approximation to the horizontal visual field -- see https://en.wikipedia.org/wiki/Visual_field
 
-let cameraLensDistance = 0.02;
+let componentDistance = 0.02;
 let alpha = 0.0;
+let centreOfObjectPlane = new THREE.Vector3(0, 0, -10);
+let designViewPosition = new THREE.Vector3(0, 0, 0.02);
+let inFrontOfCamera = false;
 
 // camera with wide aperture
 let focusDistance = 1e8;
@@ -55,13 +58,13 @@ let renderer;
 let videoFeedU, videoFeedE;	// feeds from user/environment-facing cameras
 let camera;
 let controls;
-let background = 0;
+let background = 1;
 let backgroundTexture;
 
 // the menu
 let gui;
 let GUIMesh;
-let vrControlsVisibleControl, backgroundControl, componentYControl;
+let vrControlsVisibleControl, backgroundControl, componentYControl, inFrontOfCameraControl;
 
 // lift the component up to eye level (in case of VR only)
 let componentY = 0.0;
@@ -96,7 +99,7 @@ function init() {
 	// scene.background = new THREE.Color( 'skyblue' );
 	let windowAspectRatio = window.innerWidth / window.innerHeight;
 	camera = new THREE.PerspectiveCamera( fovScreen, windowAspectRatio, 0.01*raytracingSphereRadius, 2*raytracingSphereRadius );
-	camera.position.z = cameraLensDistance;
+	camera.position.z = componentDistance;
 	screenChanged();
 	
 	renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -167,6 +170,19 @@ function render() {
 }
 
 function updateUniforms() {
+	// // the component is centred at (uniform) centreOfComponent, with basis vectors aHat, bHat, cHat;
+	// // create a 4-matrix that converts from (a, b, c) to (x, y, z)
+	// let q = new THREE.Quaternion();
+	// q.setFromAxisAngle( axis, angleRad );
+
+	// let m = new THREE.Matrix4();
+	// m.compose(
+	// 	centreOfComponent,	// position
+	// 	q,	// rotation
+	// 	new THREE.Vector3(1, 1, 1)	// scale
+	// )
+	// m.makeBasis(aHat, bHat, cHat);
+
 	// the tangents for the environment-facing camera video feed
 	let tanHalfFovHE, tanHalfFovVE;
 	if(aspectRatioVideoFeedE > 1.0) {
@@ -198,31 +214,64 @@ function updateUniforms() {
 	raytracingSphereShaderMaterial.uniforms.showVideoFeed.value = (background == 0);
 	raytracingSphereShaderMaterial.uniforms.backgroundTexture.value = backgroundTexture;
 
+	// the camera's local coordinate system
+	let cameraXHat = new THREE.Vector3();	// right direction
+	let cameraYHat = new THREE.Vector3();	// up direction
+	let cameraZHat = new THREE.Vector3();	// backwards direction, i.e. - viewDirection
+	camera.matrixWorld.extractBasis(cameraXHat, cameraYHat, cameraZHat);
+
+/* 	// alternative way:
 	let viewDirection = new THREE.Vector3();
-	let apertureBasisVector1 = new THREE.Vector3();
-	let apertureBasisVector2 = new THREE.Vector3();
 	camera.getWorldDirection(viewDirection);
+	// the standard way of establishing the "up" direction is to calculate xHat = viewDirection x (0, 1, 0)
+	// and then calculating yHat = xHat x viewDirection;
+	// we need to deal with the special case when viewDirection \propto (0, 1, 0)
+	if((viewDirection.x == 0.0) && (viewDirection.z == 0.0)) {
+		// viewDirection is along y direction; make x the x direction, and then the y direction is +z or -z
+		cameraXHat = new THREE.Vector3(1, 0, 0);
+	} else {
+		// viewDirection is not along y direction
+		cameraXHat.crossVectors(viewDirection, new THREE.Vector3(0, 1, 0)).normalize();
+	}
+	cameraYHat.crossVectors(cameraXHat, viewDirection).normalize();
+ */
+
+	// calculate the component's model matrix and model-matrix inverse
+
+	// calculate the component's position
+	let componentPosition = new THREE.Vector3();	
+	componentPosition.copy(camera.position);	// the camera position
+	componentPosition.addScaledVector(cameraZHat, -componentDistance);	// -componentDistance * zHat
+
+	// calculate the component's model matrix and its inverse
+	let componentModelMatrix = new THREE.Matrix4();
+	let componentModelMatrixInverse = new THREE.Matrix4();
+	if(inFrontOfCamera) {
+		componentModelMatrix.copy(camera.matrixWorld);	// the basis vectors are the same as those in the camera's model matrix...
+		componentModelMatrix.setPosition(componentPosition);	// ... but the position isn't the same
+	
+		componentModelMatrixInverse.copy(componentModelMatrix);	// start from the model matrix...
+		componentModelMatrixInverse.invert();	// ... and invert it
+	} else {
+		componentModelMatrix.identity();
+		componentModelMatrixInverse.identity();
+	}
+	raytracingSphereShaderMaterial.uniforms.componentModelMatrix.value = componentModelMatrix;	// set the uniform
+	raytracingSphereShaderMaterial.uniforms.componentModelMatrixInverse.value = componentModelMatrixInverse;	// set the uniform
+
 	// if(counter < 10) console.log(`viewDirection = (${viewDirection.x.toPrecision(2)}, ${viewDirection.y.toPrecision(2)}, ${viewDirection.z.toPrecision(2)})`);
+	// raytracingSphereShaderMaterial.uniforms.viewDirection.value = cameraZHat.multiplyScalar(-1);
 
 	// if the component is "glued" to the eye, place it in front of the camera
-	raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.y = componentY;	// camera.position.y;
-	raytracingSphereShaderMaterial.uniforms.designViewPosition.value.y = componentY;
+	// raytracingSphereShaderMaterial.uniforms.centreOfComponent.value.y = componentY;	// camera.position.y;
+	// raytracingSphereShaderMaterial.uniforms.designViewPosition.value.y = componentY;
 	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.y = componentY;
-	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.x = raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.x - 0.064;
+	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.x = componentPosition.x - 0.064;
 
-	// create basis vectors for the camera's clear aperture
-	if((viewDirection.x == 0.0) && (viewDirection.y == 0.0)) {
-		// viewDirection is along z direction
-		apertureBasisVector1.crossVectors(viewDirection, new THREE.Vector3(1, 0, 0)).normalize();
-	} else {
-		// viewDirection is not along z direction
-		apertureBasisVector1.crossVectors(viewDirection, new THREE.Vector3(0, 0, 1)).normalize();
-	}
-	apertureBasisVector2.crossVectors(viewDirection, apertureBasisVector1).normalize();
 
 	raytracingSphereShaderMaterial.uniforms.noOfRays.value = noOfRays;
-	raytracingSphereShaderMaterial.uniforms.apertureXHat.value.copy(apertureBasisVector1);
-	raytracingSphereShaderMaterial.uniforms.apertureYHat.value.copy(apertureBasisVector2);
+	raytracingSphereShaderMaterial.uniforms.cameraXHat.value.copy(cameraXHat);
+	raytracingSphereShaderMaterial.uniforms.cameraYHat.value.copy(cameraYHat);
 	raytracingSphereShaderMaterial.uniforms.focusDistance.value = focusDistance;
 
 	raytracingSphereShaderMaterial.uniforms.cosAlpha.value = Math.cos(alpha);
@@ -264,17 +313,19 @@ function addRaytracingSphere() {
 	raytracingSphereShaderMaterial = new THREE.ShaderMaterial({
 		side: THREE.DoubleSide,
 		// wireframe: true,
-		uniforms: { 
+		uniforms: {
 			visible: { value: true },
 			period: { value: 0.001 },
 			cosAlpha: { value: 1.0 },
 			sinAlpha: { value: 0.0	},
 			stretchFactor: { value: 1.0 },
 			additionalF: { value: 1e10 },	// additional focal length of lenslet array (an additional lens in the same plane)
-			centreOfWedgeArray: { value: new THREE.Vector3(0, 0, 0) },	// principal point of lenslet (0, 0)
+			componentModelMatrix: { value: new THREE.Matrix4() },
+			componentModelMatrixInverse: { value: new THREE.Matrix4() },
+			// centreOfComponent: { value: new THREE.Vector3(0, 0, 0) },	// principal point of lenslet (0, 0)
 			centreOfPerfectRotator: { value: new THREE.Vector3(0, 0, 0) },
-			centreOfObjectPlane: { value: new THREE.Vector3(0, 0, -10) },
-			designViewPosition: { value: new THREE.Vector3(0, 0, 0.02) },
+			centreOfObjectPlane: { value: centreOfObjectPlane },
+			designViewPosition: { value: designViewPosition },
 			radius: { value: 0.05 },	// radius
 			backgroundTexture: { value: backgroundTexture },
 			showVideoFeed: { value: true },
@@ -290,8 +341,8 @@ function addRaytracingSphere() {
 			halfHeightE: { value: 1.0 },
 			videoDistance: { value: 10.0 },	// distance of the image of the video feed from the origin
 			focusDistance: { value: 10.0 },
-			apertureXHat: { value: new THREE.Vector3(1, 0, 0) },
-			apertureYHat: { value: new THREE.Vector3(0, 1, 0) },
+			cameraXHat: { value: new THREE.Vector3(1, 0, 0) },
+			cameraYHat: { value: new THREE.Vector3(0, 1, 0) },
 			apertureRadius: { value: 0.0 },
 			randomNumbersX: { value: randomNumbersX },
 			randomNumbersY: { value: randomNumbersY },
@@ -317,13 +368,15 @@ function addRaytracingSphere() {
 			varying vec3 intersectionPoint;
 			
 			// the wedge array
+			uniform mat4 componentModelMatrix;
+			uniform mat4 componentModelMatrixInverse;
 			uniform bool visible;
 			uniform float cosAlpha;	// cos of rotation angle
 			uniform float sinAlpha;	// sin of rotation angle
 			uniform float stretchFactor;
 			uniform float period;	// period of array
 			uniform float additionalF;	// additional focal length (an additional lens in the same plane)
-			uniform vec3 centreOfWedgeArray;	// centre of wedge array
+			// uniform vec3 centreOfComponent;	// centre of wedge array
 			uniform vec3 centreOfPerfectRotator;
 			uniform float radius;	// radius of wedge array
 			uniform vec3 centreOfObjectPlane;
@@ -347,8 +400,8 @@ function addRaytracingSphere() {
 			uniform float videoDistance;
 			uniform float focusDistance;
 			uniform int noOfRays;
-			uniform vec3 apertureXHat;
-			uniform vec3 apertureYHat;
+			uniform vec3 cameraXHat;
+			uniform vec3 cameraYHat;
 			uniform float apertureRadius;
 			uniform float randomNumbersX[100];
 			uniform float randomNumbersY[100];
@@ -360,7 +413,25 @@ function addRaytracingSphere() {
 				return m * v;
 			}
 
-			// propagate the ray starting at position p and with direction d to the plane z = z0, providing that plane
+			// returns a 3D matrix that corresponds to rotation by <angle> (in radians)
+			// around <axis>
+			// source: https://github.com/dmnsgn/glsl-rotate/blob/main/rotation-3d.glsl
+			// use: rotation3d(axis, angle) * v gives the vector v, rotated by angle around axis
+			mat4 rotation3d(vec3 axis, float angle) {
+				axis = normalize(axis);
+				float s = sin(angle);
+				float c = cos(angle);
+				float oc = 1.0 - c;
+
+				return mat4(
+					oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+					oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+					oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+					0.0,                                0.0,                                0.0,                                1.0
+				);
+			}
+
+			// propagate the ray starting at position p and with direction d to the plane z = z0, provided that plane
 			// is in the ray's "forward" direction;
 			// p becomes the point where the ray intersects p;
 			// returns true or false depending on whether the intersection point is forwards or backwards along the ray
@@ -369,13 +440,37 @@ function addRaytracingSphere() {
 				vec3 d, 
 				float z0
 			) {
-				// calculate the z distance from the ray start position to the array
+				// calculate the z distance from the ray start position to the plane
 				float deltaZ = z0 - p.z;
 
 				// is the intersection with the plane in the ray's "forward" direction?
 				if(d.z*deltaZ > 0.0) {
 					// the intersection is in the forward direction; advance the ray to the plane
 					p += d/d.z*deltaZ;	// set p to the intersection point with the plane
+					return true;
+				}
+				return false;
+			}
+
+			// propagate the ray starting at position p and with direction d to the plane r.nHat = n0, provided that plane
+			// is in the ray's "forward" direction;
+			// p becomes the point where the ray intersects p;
+			// returns true or false depending on whether the intersection point is forwards or backwards along the ray
+			// nHat must be normalised
+			bool propagateForwardToPlane(
+				inout vec3 p,
+				vec3 d,
+				vec3 nHat,
+				float n0
+			) {
+				// calculate the distance in the nHat direction from the ray start position to the plane
+				float deltaN = n0 - dot(p, nHat);
+
+				// is the intersection with the plane in the ray's "forward" direction?
+				float dN = dot(d, nHat);
+				if(dN*deltaN > 0.0) {
+					// the intersection is in the forward direction; advance the ray to the plane
+					p += d/dN*deltaN;	// set p to the intersection point with the plane
 					return true;
 				}
 				return false;
@@ -444,37 +539,35 @@ function addRaytracingSphere() {
 				return uPeriod*floor(u/uPeriod+0.5);
 			}
 
-			// Find the centre of the nearest pixel in a rectangular pixel array.
-			// r is a 2D vector containing the transverse components of the vector from pp00 to the
+			// Find the centre of the nearest pixel in a rectangular pixel array centred on the origin.
+			// r is a 2D vector containing the transverse components of the vector from the array centre to the
 			// intersection point;
-			// pp00 is the centre of the pixel with indices (0, 0) -- sort of the array centre;
 			// alpha is the angle (in radians) by which the array is rotated
 			// period1 and period2 are the periods in the (rotated) x and y directions
-			vec2 findPixelCentre(vec2 r, vec2 pp00, float cosAlpha, float sinAlpha, float period1, float period2) {
+			vec2 findPixelCentre(vec2 r, float cosAlpha, float sinAlpha, float period1, float period2) {
 				vec2 rr = rotate(r, cosAlpha, -sinAlpha);
 				vec2 lensletCentreST = vec2(
 					findPixelCentreCoordinate(rr.x, period1),
 					findPixelCentreCoordinate(rr.y, period2)
 				);
-				return rotate(lensletCentreST, cosAlpha, sinAlpha) + pp00;
+				return rotate(lensletCentreST, cosAlpha, sinAlpha);
 			}
 
-			vec3 lensletArrayDeflect(vec3 d, vec3 intersectionPoint, vec3 principalPoint00, float cosAlpha, float sinAlpha, float period, float focalLength) {
-				vec2 p00ixy = intersectionPoint.xy - principalPoint00.xy;
-				vec2 pxy = findPixelCentre(p00ixy, principalPoint00.xy, cosAlpha, sinAlpha, period, period);
+			vec3 lensletArrayDeflect(vec3 d, vec3 intersectionPoint, float cosAlpha, float sinAlpha, float period, float focalLength) {
+				vec2 p00ixy = intersectionPoint.xy;
+				vec2 pxy = findPixelCentre(p00ixy, cosAlpha, sinAlpha, period, period);
 				// light-ray direction after array
 				return lensDeflect(d, intersectionPoint.xy - pxy, focalLength);
 			}
 
 			// Pass the current ray (start point p, direction d, brightness factor b) through (or around) a lenslet array.
-			// The lenslet array is in a z plane through centreOfWedgeArray; it is simulated as ideal thin lenses.
+			// The lenslet array is in a z plane through the origin; it is simulated as ideal thin lenses.
 			// The lenslets, all of focal length f, are arranged in a square array of the given period, 
-			// rotated by alpha around the z axis.  The component is circular, with the given radius, centred on centreOfWedgeArray.
+			// rotated by alpha around the z axis.  The component is circular, with the given radius, centred on the origin.
 			void passThroughLensletArray(
 				inout vec3 p, 
 				inout vec3 d, 
 				inout vec4 b,
-				vec3 centreOfArray, 
 				float radius,
 				float cosAlpha,
 				float sinAlpha,
@@ -482,18 +575,18 @@ function addRaytracingSphere() {
 				float lensletsF,
 				float overallF
 			) {
-				if(propagateForwardToZPlane(p, d, centreOfArray.z)) {
+				if(propagateForwardToZPlane(p, d, 0.)) {
 					// there is an intersection with the plane of this array in the ray's forward direction
 					
 					// does the intersection point lie with in the radius?
-					vec2 pixy = p.xy - centreOfArray.xy;
+					vec2 pixy = p.xy;
 					float r2 = dot(pixy, pixy);	// length squared of vector r
 					if(r2 < radius*radius) {
 						// the intersection point lies inside the radius, so the component does something to the ray
 
 						// deflect the light-ray direction accordingly 
 
-						d = lensletArrayDeflect(d, p, centreOfArray, cosAlpha, sinAlpha, period, lensletsF);
+						d = lensletArrayDeflect(d, p, cosAlpha, sinAlpha, period, lensletsF);
 						d = lensDeflect(d, pixy, overallF);
 
 						// lower the brightness factor, giving the light a blue tinge
@@ -502,26 +595,63 @@ function addRaytracingSphere() {
 				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 			}
 
-			vec3 wedgeArrayDeflect(
+			// deflection by an array of wedges in the plane z=0, centred on the origin
+			vec3 zWedgeArrayDeflect(
 				vec3 d, 
 				vec3 intersectionPoint
-				//vec3 centreOfWedgeArray, 
-				//float cosAlpha, 
-				//float sinAlpha, 
-				//float stretchFactor,
-				//vec3 centreOfObjectPlane,
-				//vec3 designViewPosition,
-				//float period
 			) {
-				vec2 cixy = intersectionPoint.xy - centreOfWedgeArray.xy;
+				vec2 cixy = intersectionPoint.xy;	// - centreOfComponent.xy;
 
 				// find the pixel centre
-				vec3 p = vec3(findPixelCentre(cixy, centreOfWedgeArray.xy, 1., 0., period, period), centreOfWedgeArray.z);
+				vec3 p = vec3(findPixelCentre(cixy, 1., 0., period, period), 0);	// + centreOfComponent.xy, centreOfComponent.z);
 				
 				// calculate the incident and outgoing directions for which the pixel is designed
 				vec3 i = normalize(p - designViewPosition);	// incident direction: from the design view position to the pixel centre
 				// the x and y coordinates of the point where the undeviated ray from the designViewPosition through the pixel centre intersects the object plane
-				vec2 undeviatedIntersectionPointXY = (p + (centreOfObjectPlane.z - centreOfWedgeArray.z)*i/i.z).xy;
+				vec2 undeviatedIntersectionPointXY = (p + centreOfObjectPlane.z*i/i.z).xy;	// (p + (centreOfObjectPlane.z - centreOfComponent.z)*i/i.z).xy;
+				// the point where the deviated ray from the designViewPosition through the pixel centre intersects the object plane
+				vec3 deviatedIntersectionPoint = 
+					centreOfObjectPlane 
+					+ vec3(rotate(undeviatedIntersectionPointXY-centreOfObjectPlane.xy, cosAlpha, -sinAlpha) / stretchFactor, 0.);
+				// outgoing direction
+				vec3 o = normalize(deviatedIntersectionPoint - p);
+
+				// calculate the change deltaDxy in the normalised light-ray direction this pixel introduces
+				vec2 deltaDXY = o.xy - i.xy;
+
+				// calculate the transverse part of the outgoing light-ray direction
+				vec2 t = normalize(d).xy + deltaDXY;
+
+				// is the length of the transverse part > 1?
+				float tSquared = dot(t, t);
+				if(tSquared > 1.) {
+					// yes, the outgoing ray is evanescent, so reflect it
+					return vec3(d.xy, -d.z);
+				}
+
+				// complement the transverse part with the longitudinal component and return 
+				return vec3(t, sign(d.z)*sqrt(1. - tSquared));
+			}
+
+			// Deflect a light ray transmitted through a view-rotating, pixellated, array of phase-holographic wedges.
+			// This component is centred at the origin.	// <centreOfComponent>
+			vec3 wedgeArrayDeflect(
+				vec3 d, 
+				vec3 intersectionPoint
+			) {
+				// the transverse directions are given by cameraXHat and cameraYHat,
+				// the longitudinal direction is given by viewDirection
+
+				vec3 ci = intersectionPoint;	// - centreOfComponent;
+				vec2 cixy = vec2( dot(ci, cameraXHat), dot(ci, cameraYHat) );
+
+				// find the pixel centre
+				vec3 p = vec3(findPixelCentre(cixy, 1., 0., period, period),0);	// + centreOfComponent.xy, centreOfComponent.z);
+				
+				// calculate the incident and outgoing directions for which the pixel is designed
+				vec3 i = normalize(p - designViewPosition);	// incident direction: from the design view position to the pixel centre
+				// the x and y coordinates of the point where the undeviated ray from the designViewPosition through the pixel centre intersects the object plane
+				vec2 undeviatedIntersectionPointXY = (p + centreOfObjectPlane.z*i/i.z).xy;	// (p + (centreOfObjectPlane.z - centreOfComponent.z)*i/i.z).xy;
 				// the point where the deviated ray from the designViewPosition through the pixel centre intersects the object plane
 				vec3 deviatedIntersectionPoint = 
 					centreOfObjectPlane 
@@ -547,38 +677,38 @@ function addRaytracingSphere() {
 			}
 
 			// Pass the current ray (start point p, direction d, brightness factor b) through (or around) the wedge array.
-			// The (holographic) wedge array is in a z plane through centreOfWedgeArray.
+			// The (holographic) wedge array is in the plane z=0
 			// The wedges form a square array of the given period.
-			// The component is circular, with the given radius, centred on centreOfWedgeArray.
+			// The component is circular, with the given radius, centred on the origin.
 			// Each wedge is designed to make ...
 			void passThroughWedgeArray(
 				inout vec3 p, 
 				inout vec3 d, 
 				inout vec4 b
-				//vec3 centreOfWedgeArray, 
-				//float radius,
-				//float cosAlpha,
-				//float sinAlpha,
-				//float period
 			) {
-				if(propagateForwardToZPlane(p, d, centreOfWedgeArray.z)) {
+				p = (componentModelMatrixInverse*vec4(p,1)).xyz;
+				d = (componentModelMatrixInverse*vec4(d,0)).xyz;
+				if(propagateForwardToZPlane(p, d, 0.)) {	// centreOfComponent.z)) {
 					// there is an intersection with the plane of this array in the ray's forward direction
 					
 					// does the intersection point lie within the radius?
-					vec2 cixy = p.xy - centreOfWedgeArray.xy;
+					vec2 cixy = p.xy;	// - centreOfComponent.xy;
 					float r2 = dot(cixy, cixy);	// length squared of vector r
 					if(r2 < radius*radius) {
 						// the intersection point lies inside the radius, so the component does something to the ray
 
 						// deflect the light-ray direction accordingly 
 
-						d = wedgeArrayDeflect(d, p);
+						d = zWedgeArrayDeflect(d, p);
 						// d = lensDeflect(d, cixy, overallF);
 
 						// lower the brightness factor, giving the light a blue tinge
 						b *= vec4(0.9, 0.9, 0.99, 1);
 					} 
 				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
+				p = (componentModelMatrix*vec4(p,1)).xyz;
+				d = (componentModelMatrix*vec4(d,0)).xyz;
+
 			}
 
 			void perfectRotatorDeflect(
@@ -656,7 +786,7 @@ function addRaytracingSphere() {
 				vec4 color;
 				for(int i=0; i<noOfRays; i++) {
 					// the current ray start position, a random point on the camera's circular aperture
-					vec3 p = cameraPosition + apertureRadius*randomNumbersX[i]*apertureXHat + apertureRadius*randomNumbersY[i]*apertureYHat;
+					vec3 p = cameraPosition + apertureRadius*randomNumbersX[i]*cameraXHat + apertureRadius*randomNumbersY[i]*cameraYHat;
 	
 					// first calculate the current light-ray direction:
 					// the ray first passes through focusPosition and then p,
@@ -704,6 +834,10 @@ function createGUI() {
 
 	const params = {
 		'Visible': raytracingSphereShaderMaterial.uniforms.visible.value,
+		inFrontOfCamera: function() { 
+			inFrontOfCamera = !inFrontOfCamera;
+			inFrontOfCameraControl.name( inFrontOfCamera2String() );
+		},
 		'Component radius (cm)': 100.*raytracingSphereShaderMaterial.uniforms.radius.value,
 		'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)': Math.atan(raytracingSphereShaderMaterial.uniforms.additionalF.value),
 		'Period, <i>p</i> (mm)': 1000.*raytracingSphereShaderMaterial.uniforms.period.value,
@@ -736,6 +870,7 @@ function createGUI() {
 	}
 
 	gui.add( params, 'Visible').onChange( (v) => { raytracingSphereShaderMaterial.uniforms.visible.value = v; } );
+	inFrontOfCameraControl = gui.add( params, 'inFrontOfCamera' ).name( inFrontOfCamera2String() );
 	gui.add( params, 'Component radius (cm)', 0, 10).onChange( (r) => { raytracingSphereShaderMaterial.uniforms.radius.value = r/100.; } );
 	gui.add( params, 'Period, <i>p</i> (mm)', 0.1, 10).onChange( (p) => { raytracingSphereShaderMaterial.uniforms.period.value = p/1000.; } );
 	// gui.add( params, 'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)', -0.5*Math.PI, 0.5*Math.PI).onChange( (f) => { raytracingSphereShaderMaterial.uniforms.additionalF.value = Math.tan(f); } );
@@ -774,6 +909,10 @@ function createGUI() {
 
 function guiMeshVisible2String() {
 	return 'VR controls '+(GUIMesh.visible?'visible':'hidden');
+}
+
+function inFrontOfCamera2String() {
+	return inFrontOfCamera?'In front of Camera':'At origin';
 }
 
 function addXRInteractivity() {
@@ -823,6 +962,8 @@ function addXRInteractivity() {
 }
 
 function loadBackgroundImage() {
+	// first free up resources
+	if(backgroundTexture) backgroundTexture.dispose();
 	if(background != 0) {
 		const textureLoader = new THREE.TextureLoader();
 		// textureLoader.crossOrigin = "Anonymous";
@@ -1216,7 +1357,7 @@ function getInfoString() {
 		`&nbsp;&nbsp;Period = ${raytracingSphereShaderMaterial.uniforms.period.value.toPrecision(4)}<br>` +
 		`&nbsp;&nbsp;Rotation angle = ${(alpha*180.0/Math.PI).toPrecision(4)}&deg;<br>` +
 		`&nbsp;&nbsp;Radius = ${raytracingSphereShaderMaterial.uniforms.radius.value.toPrecision(4)}<br>` +
-		`&nbsp;&nbsp;Centre of wedge array = (${raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.x.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.y.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.centreOfWedgeArray.value.z.toPrecision(4)})<br>` +
+		// `&nbsp;&nbsp;Centre of wedge array = (${raytracingSphereShaderMaterial.uniforms.centreOfComponent.value.x.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.centreOfComponent.value.y.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.centreOfComponent.value.z.toPrecision(4)})<br>` +
 		`&nbsp;&nbsp;Focal length of additional lens in same plane = ${raytracingSphereShaderMaterial.uniforms.additionalF.value.toPrecision(4)}<br>` +		
 		`Video feeds<br>` +
 		`&nbsp;&nbsp;Distance from origin = ${raytracingSphereShaderMaterial.uniforms.videoDistance.value.toPrecision(4)}<br>` +	// (user-facing) camera
@@ -1229,8 +1370,8 @@ function getInfoString() {
 		`&nbsp;&nbsp;Aperture radius = ${raytracingSphereShaderMaterial.uniforms.apertureRadius.value.toPrecision(4)}<br>` +
 		`&nbsp;&nbsp;Focussing distance = ${focusDistance.toPrecision(4)}<br>` +
 		`&nbsp;&nbsp;Number of rays = ${noOfRays}`
-		// `apertureXHat = (${raytracingSphereShaderMaterial.uniforms.apertureXHat.value.x.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.apertureXHat.value.y.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.apertureXHat.value.z.toPrecision(4)})<br>` +
-		// `apertureYHat = (${raytracingSphereShaderMaterial.uniforms.apertureYHat.value.x.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.apertureYHat.value.y.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.apertureYHat.value.z.toPrecision(4)})`
+		// `cameraXHat = (${raytracingSphereShaderMaterial.uniforms.cameraXHat.value.x.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.cameraXHat.value.y.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.cameraXHat.value.z.toPrecision(4)})<br>` +
+		// `cameraYHat = (${raytracingSphereShaderMaterial.uniforms.cameraYHat.value.x.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.cameraYHat.value.y.toPrecision(4)}, ${raytracingSphereShaderMaterial.uniforms.cameraYHat.value.z.toPrecision(4)})`
 		;
 		console.log("*");
 }
