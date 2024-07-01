@@ -37,6 +37,7 @@ let fovVideoFeedE = 68.3;	// (environment-facing) camera
 // the FOV of the screen depends on the user's distance from the screen, of course
 let fovScreen = 140;	// approximation to the horizontal visual field -- see https://en.wikipedia.org/wiki/Visual_field
 
+let IPD = 0.064;	// see https://en.wikipedia.org/wiki/Pupillary_distance#Databases
 let componentDistance = 0.2;
 let alpha = 0.0;
 let centreOfObjectPlane = new THREE.Vector3(0, 0, -10);
@@ -242,6 +243,7 @@ function updateUniforms() {
 	let componentPosition = new THREE.Vector3();	
 	componentPosition.copy(camera.position);	// the camera position
 	componentPosition.addScaledVector(cameraZHat, -componentDistance);	// -componentDistance * zHat
+	componentPosition.addScaledVector(cameraXHat, 0.5*IPD);	// -componentDistance * zHat
 
 	// calculate the component's model matrix and its inverse
 	let componentModelMatrix = new THREE.Matrix4();
