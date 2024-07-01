@@ -241,25 +241,42 @@ function updateUniforms() {
 
 	// calculate the component's position
 	let componentPosition = new THREE.Vector3();	
+	let comparisonPosition = new THREE.Vector3();	
 	componentPosition.copy(camera.position);	// the camera position
 	componentPosition.addScaledVector(cameraZHat, -componentDistance);	// -componentDistance * zHat
-	componentPosition.addScaledVector(cameraXHat, 0.5*IPD);	// -componentDistance * zHat
+	comparisonPosition.copy(componentPosition);
+	componentPosition.addScaledVector(cameraXHat, 0.5*IPD);	// a bit to the right
+	comparisonPosition.addScaledVector(cameraXHat, -0.5*IPD);	// a bit to the left
 
 	// calculate the component's model matrix and its inverse
 	let componentModelMatrix = new THREE.Matrix4();
 	let componentModelMatrixInverse = new THREE.Matrix4();
+	let comparisonModelMatrix = new THREE.Matrix4();
+	let comparisonModelMatrixInverse = new THREE.Matrix4();
 	if(inFrontOfCamera) {
 		componentModelMatrix.copy(camera.matrixWorld);	// the basis vectors are the same as those in the camera's model matrix...
 		componentModelMatrix.setPosition(componentPosition);	// ... but the position isn't the same
 	
 		componentModelMatrixInverse.copy(componentModelMatrix);	// start from the model matrix...
 		componentModelMatrixInverse.invert();	// ... and invert it
+
+		comparisonModelMatrix.copy(camera.matrixWorld);	// the basis vectors are the same as those in the camera's model matrix...
+		comparisonModelMatrix.setPosition(comparisonPosition);	// ... but the position isn't the same
+	
+		comparisonModelMatrixInverse.copy(comparisonModelMatrix);	// start from the model matrix...
+		comparisonModelMatrixInverse.invert();	// ... and invert it
+
 	} else {
 		componentModelMatrix.identity();
 		componentModelMatrixInverse.identity();
+
+		comparisonModelMatrix.identity();
+		comparisonModelMatrixInverse.identity();
 	}
 	raytracingSphereShaderMaterial.uniforms.componentModelMatrix.value = componentModelMatrix;	// set the uniform
 	raytracingSphereShaderMaterial.uniforms.componentModelMatrixInverse.value = componentModelMatrixInverse;	// set the uniform
+	raytracingSphereShaderMaterial.uniforms.comparisonModelMatrix.value = comparisonModelMatrix;	// set the uniform
+	raytracingSphereShaderMaterial.uniforms.comparisonModelMatrixInverse.value = comparisonModelMatrixInverse;	// set the uniform
 
 	// if(counter < 10) console.log(`viewDirection = (${viewDirection.x.toPrecision(2)}, ${viewDirection.y.toPrecision(2)}, ${viewDirection.z.toPrecision(2)})`);
 	// raytracingSphereShaderMaterial.uniforms.viewDirection.value = cameraZHat.multiplyScalar(-1);
@@ -325,6 +342,8 @@ function addRaytracingSphere() {
 			componentModelMatrix: { value: new THREE.Matrix4() },
 			componentModelMatrixInverse: { value: new THREE.Matrix4() },
 			// centreOfComponent: { value: new THREE.Vector3(0, 0, 0) },	// principal point of lenslet (0, 0)
+			comparisonModelMatrix: { value: new THREE.Matrix4() },
+			comparisonModelMatrixInverse: { value: new THREE.Matrix4() },
 			centreOfPerfectRotator: { value: new THREE.Vector3(0, 0, 0) },
 			centreOfObjectPlane: { value: centreOfObjectPlane },
 			designViewPosition: { value: designViewPosition },
@@ -379,6 +398,9 @@ function addRaytracingSphere() {
 			uniform float period;	// period of array
 			uniform float additionalF;	// additional focal length (an additional lens in the same plane)
 			// uniform vec3 centreOfComponent;	// centre of wedge array
+
+			uniform mat4 comparisonModelMatrix;
+			uniform mat4 comparisonModelMatrixInverse;
 			uniform vec3 centreOfPerfectRotator;
 			uniform float radius;	// radius of wedge array
 			uniform vec3 centreOfObjectPlane;
@@ -710,14 +732,13 @@ function addRaytracingSphere() {
 				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 				p = (componentModelMatrix*vec4(p,1)).xyz;
 				d = (componentModelMatrix*vec4(d,0)).xyz;
-
 			}
 
 			void perfectRotatorDeflect(
 				inout vec3 p,
 				inout vec3 d
 			) {
-				p = centreOfPerfectRotator + vec3(rotate(p.xy - centreOfPerfectRotator.xy, cosAlpha, -sinAlpha), 0.);
+				p = centreOfPerfectRotator + vec3(rotate(p.xy, cosAlpha, -sinAlpha), 0.);
 				d = vec3(rotate(d.xy, cosAlpha, -sinAlpha), d.z);
 			}
 
@@ -726,6 +747,10 @@ function addRaytracingSphere() {
 				inout vec3 d, 
 				inout vec4 b
 			) {
+				p = (comparisonModelMatrixInverse*vec4(p,1)).xyz;
+				d = (comparisonModelMatrixInverse*vec4(d,0)).xyz;
+
+
 				// if(propagateForwardToZPlane(p, d, centreOfPerfectRotator.z)) {
 					// there is an intersection with the plane of this component in the ray's forward direction
 					
@@ -742,6 +767,9 @@ function addRaytracingSphere() {
 						b *= vec4(0.9, 0.9, 0.99, 1);
 					} 
 				// } // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
+
+				p = (comparisonModelMatrix*vec4(p,1)).xyz;
+				d = (comparisonModelMatrix*vec4(d,0)).xyz;
 			}
 
 			// propagate the ray to the plane of the video feed, which is a z-distance <videoDistance> away,
@@ -845,6 +873,7 @@ function createGUI() {
 		'Period, <i>p</i> (mm)': 1000.*raytracingSphereShaderMaterial.uniforms.period.value,
 		'Rotation angle (&deg;)': alpha / Math.PI * 180.,
 		'Stretch factor': raytracingSphereShaderMaterial.uniforms.stretchFactor.value,
+		componentDistance: componentDistance,
 		componentY: componentY,
 		makeEyeLevel: function() { componentY = camera.position.y; componentYControl.setValue(componentY); },
 		'Horiz. FOV (&deg;)': fovScreen,
@@ -878,6 +907,7 @@ function createGUI() {
 	// gui.add( params, 'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)', -0.5*Math.PI, 0.5*Math.PI).onChange( (f) => { raytracingSphereShaderMaterial.uniforms.additionalF.value = Math.tan(f); } );
 	gui.add( params, 'Rotation angle (&deg;)', -90, 90).onChange( (a) => { alpha = a/180.0*Math.PI; } );
 	gui.add( params, 'Stretch factor', 0.1, 10 ).onChange( (m) => { raytracingSphereShaderMaterial.uniforms.stretchFactor.value = m; } );
+	gui.add( params, 'componentDistance', 0.001, 0.2, 0.001 ).name( 'distance' ).onChange( (d) => { componentDistance = d; } );
 	componentYControl = gui.add( params, 'componentY',  0, 3, 0.001).name( "<i>y</i><sub>centre</sub>" ).onChange( (y) => { componentY = y; } );
 	gui.add( params, 'makeEyeLevel' ).name( 'Move resonator to eye level' );
 	
