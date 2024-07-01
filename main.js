@@ -37,7 +37,7 @@ let fovVideoFeedE = 68.3;	// (environment-facing) camera
 // the FOV of the screen depends on the user's distance from the screen, of course
 let fovScreen = 140;	// approximation to the horizontal visual field -- see https://en.wikipedia.org/wiki/Visual_field
 
-let componentDistance = 0.02;
+let componentDistance = 0.2;
 let alpha = 0.0;
 let centreOfObjectPlane = new THREE.Vector3(0, 0, -10);
 let designViewPosition = new THREE.Vector3(0, 0, 0.02);
