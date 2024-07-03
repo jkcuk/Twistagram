@@ -244,9 +244,9 @@ function updateUniforms() {
 	let comparisonPosition = new THREE.Vector3();	
 	componentPosition.copy(camera.position);	// the camera position
 	componentPosition.addScaledVector(cameraZHat, -componentDistance);	// -componentDistance * zHat
-	comparisonPosition.copy(componentPosition);
 	componentPosition.addScaledVector(cameraXHat, 0.5*ipd);	// a bit to the right
-	comparisonPosition.addScaledVector(cameraXHat, -0.5*ipd);	// a bit to the left
+	comparisonPosition.copy(componentPosition);
+	// comparisonPosition.addScaledVector(cameraXHat, -0.5*ipd);	// a bit to the left
 
 	// calculate the component's model matrix and its inverse
 	let componentModelMatrix = new THREE.Matrix4();
@@ -700,6 +700,14 @@ function addRaytracingSphere() {
 				return vec3(t, sign(d.z)*sqrt(1. - tSquared));
 			}
 
+			void perfectRotatorDeflect(
+				inout vec3 p,
+				inout vec3 d
+			) {
+				p = vec3(rotate(p.xy, cosAlpha, sinAlpha), 0.);
+				d = vec3(rotate(d.xy, cosAlpha, sinAlpha), d.z);
+			}
+
 			// Pass the current ray (start point p, direction d, brightness factor b) through (or around) the wedge array.
 			// The (holographic) wedge array is in the plane z=0
 			// The wedges form a square array of the given period.
@@ -708,7 +716,9 @@ function addRaytracingSphere() {
 			void passThroughWedgeArray(
 				inout vec3 p, 
 				inout vec3 d, 
-				inout vec4 b
+				inout vec4 b,
+				bool wedgeArrayVisible,
+				bool perfectRotatorVisible
 			) {
 				p = (componentModelMatrixInverse*vec4(p,1)).xyz;
 				d = (componentModelMatrixInverse*vec4(d,0)).xyz;
@@ -723,7 +733,8 @@ function addRaytracingSphere() {
 
 						// deflect the light-ray direction accordingly 
 
-						d = zWedgeArrayDeflect(d, p);
+						if(wedgeArrayVisible) d = zWedgeArrayDeflect(d, p);
+						if(perfectRotatorVisible) perfectRotatorDeflect(p, d);
 						// d = lensDeflect(d, cixy, overallF);
 
 						// lower the brightness factor, giving the light a blue tinge
@@ -732,14 +743,6 @@ function addRaytracingSphere() {
 				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 				p = (componentModelMatrix*vec4(p,1)).xyz;
 				d = (componentModelMatrix*vec4(d,0)).xyz;
-			}
-
-			void perfectRotatorDeflect(
-				inout vec3 p,
-				inout vec3 d
-			) {
-				p = vec3(rotate(p.xy, cosAlpha, -sinAlpha), 0.);
-				d = vec3(rotate(d.xy, cosAlpha, -sinAlpha), d.z);
 			}
 
 			void passThroughPerfectRotator(
@@ -830,15 +833,15 @@ function addRaytracingSphere() {
 					if(d.z < 0.0) {
 						// the ray is travelling "forwards", in the (-z) direction;
 						// pass first through the array, then to environment-facing video feed
-						if(visible) passThroughWedgeArray(p, d, b);
-						passThroughPerfectRotator(p, d, b);
+						passThroughWedgeArray(p, d, b, visible, true);
+						// passThroughPerfectRotator(p, d, b);
 						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));
 						else color = getColorOfBackground(d);
 					} else {
 						// the ray is travelling "backwards", in the (+z) direction;
 						// pass first through the array, then to user-facing video feed
-						if(visible) passThroughWedgeArray(p, d, b);
-						passThroughPerfectRotator(p, d, b);
+						passThroughWedgeArray(p, d, b, visible, true);
+						// passThroughPerfectRotator(p, d, b);
 						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, videoDistance, videoFeedUTexture, halfWidthU, halfHeightU, vec4(1, 1, 1, 1.0));
 						else color = getColorOfBackground(d);
 					}
