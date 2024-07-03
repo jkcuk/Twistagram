@@ -959,13 +959,13 @@ function createGUI() {
 
 		// create the GUI mesh at the end to make sure that it includes all controls
 		GUIMesh = new HTMLMesh( gui.domElement );
-		GUIMesh.position.x = 0;
+/* 		GUIMesh.position.x = 0;
 		GUIMesh.position.y = 1;	// componentY - 1.5;
 		GUIMesh.position.z = -0.4;
 		GUIMesh.rotation.x = 0;	// -Math.PI/4;
 		GUIMesh.scale.setScalar( 2 );
 		scene.add( GUIMesh );	
-	
+ */	
 		GUIMesh.visible = false;
 		vrControlsVisibleControl.name( guiMeshVisible2String() );	// this can be called only after GUIMesh has been created
 	// }
@@ -1025,13 +1025,13 @@ function addXRInteractivity() {
 
 	// place this below the resonator
 	// GUIMesh = new HTMLMesh( gui.domElement );
-/* 	GUIMesh.position.x = 0;
-	GUIMesh.position.y = componentY - 1.5;
+ 	GUIMesh.position.x = 0;
+	GUIMesh.position.y = 1;	// componentY - 1.5;
 	GUIMesh.position.z = -0.4;
-	GUIMesh.rotation.x = -Math.PI/4;
+	GUIMesh.rotation.x = 0;	// -Math.PI/4;
 	GUIMesh.scale.setScalar( 2 );
 	group.add( GUIMesh );	
- */}
+ }
 
 function loadBackgroundImage() {
 	// first free up resources
