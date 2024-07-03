@@ -37,11 +37,11 @@ let fovVideoFeedE = 68.3;	// (environment-facing) camera
 // the FOV of the screen depends on the user's distance from the screen, of course
 let fovScreen = 140;	// approximation to the horizontal visual field -- see https://en.wikipedia.org/wiki/Visual_field
 
-let IPD = 0.064;	// see https://en.wikipedia.org/wiki/Pupillary_distance#Databases
+let ipd = 0.064;	// interpupillary distance, see https://en.wikipedia.org/wiki/Pupillary_distance#Databases
 let componentDistance = 0.2;
 let alpha = 0.0;
 let centreOfObjectPlane = new THREE.Vector3(0, 0, -10);
-let designViewPosition = new THREE.Vector3(0, 0, 0.02);
+let designViewPosition = new THREE.Vector3(0, 0, 0.04);
 let inFrontOfCamera = false;
 
 // camera with wide aperture
@@ -245,8 +245,8 @@ function updateUniforms() {
 	componentPosition.copy(camera.position);	// the camera position
 	componentPosition.addScaledVector(cameraZHat, -componentDistance);	// -componentDistance * zHat
 	comparisonPosition.copy(componentPosition);
-	componentPosition.addScaledVector(cameraXHat, 0.5*IPD);	// a bit to the right
-	comparisonPosition.addScaledVector(cameraXHat, -0.5*IPD);	// a bit to the left
+	componentPosition.addScaledVector(cameraXHat, 0.5*ipd);	// a bit to the right
+	comparisonPosition.addScaledVector(cameraXHat, -0.5*ipd);	// a bit to the left
 
 	// calculate the component's model matrix and its inverse
 	let componentModelMatrix = new THREE.Matrix4();
@@ -738,7 +738,7 @@ function addRaytracingSphere() {
 				inout vec3 p,
 				inout vec3 d
 			) {
-				p = centreOfPerfectRotator + vec3(rotate(p.xy, cosAlpha, -sinAlpha), 0.);
+				p = vec3(rotate(p.xy, cosAlpha, -sinAlpha), 0.);
 				d = vec3(rotate(d.xy, cosAlpha, -sinAlpha), d.z);
 			}
 
@@ -750,12 +750,11 @@ function addRaytracingSphere() {
 				p = (comparisonModelMatrixInverse*vec4(p,1)).xyz;
 				d = (comparisonModelMatrixInverse*vec4(d,0)).xyz;
 
-
-				// if(propagateForwardToZPlane(p, d, centreOfPerfectRotator.z)) {
+				// if(propagateForwardToZPlane(p, d, 0.)) {
 					// there is an intersection with the plane of this component in the ray's forward direction
 					
 					// does the intersection point lie within the radius?
-					vec2 cixy = p.xy - centreOfPerfectRotator.xy;
+					vec2 cixy = p.xy;	// - centreOfPerfectRotator.xy;
 					float r2 = dot(cixy, cixy);	// length squared of vector r
 					if(r2 < radius*radius) {
 						// the intersection point lies inside the radius, so the component does something to the ray
@@ -868,6 +867,7 @@ function createGUI() {
 			inFrontOfCamera = !inFrontOfCamera;
 			inFrontOfCameraControl.name( inFrontOfCamera2String() );
 		},
+		ipd: 1000*ipd,
 		'Component radius (cm)': 100.*raytracingSphereShaderMaterial.uniforms.radius.value,
 		'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)': Math.atan(raytracingSphereShaderMaterial.uniforms.additionalF.value),
 		'Period, <i>p</i> (mm)': 1000.*raytracingSphereShaderMaterial.uniforms.period.value,
@@ -902,6 +902,7 @@ function createGUI() {
 
 	gui.add( params, 'Visible').onChange( (v) => { raytracingSphereShaderMaterial.uniforms.visible.value = v; } );
 	inFrontOfCameraControl = gui.add( params, 'inFrontOfCamera' ).name( inFrontOfCamera2String() );
+	gui.add( params, 'ipd', 0, 100, 1 ).onChange( (v) => { ipd = v/1000; } ).name( 'interpupillary distance' );
 	gui.add( params, 'Component radius (cm)', 0, 10).onChange( (r) => { raytracingSphereShaderMaterial.uniforms.radius.value = r/100.; } );
 	gui.add( params, 'Period, <i>p</i> (mm)', 0.1, 10).onChange( (p) => { raytracingSphereShaderMaterial.uniforms.period.value = p/1000.; } );
 	// gui.add( params, 'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)', -0.5*Math.PI, 0.5*Math.PI).onChange( (f) => { raytracingSphereShaderMaterial.uniforms.additionalF.value = Math.tan(f); } );
