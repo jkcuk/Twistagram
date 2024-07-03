@@ -58,7 +58,8 @@ let scene;
 let renderer;
 let videoFeedU, videoFeedE;	// feeds from user/environment-facing cameras
 let camera;
-let controls;
+let orbitControls;
+let dragControls;
 let background = 1;
 let backgroundTexture;
 
@@ -126,6 +127,8 @@ function init() {
 
 	// the controls menu
 	createGUI();
+
+	addDragControls();
 
 	// check if VR is supported (see https://developer.mozilla.org/en-US/docs/Web/API/XRSystem/isSessionSupported)...
 	// if (navigator.xr) {
@@ -1031,7 +1034,26 @@ function addXRInteractivity() {
 	GUIMesh.rotation.x = 0;	// -Math.PI/4;
 	GUIMesh.scale.setScalar( 2 );
 	group.add( GUIMesh );	
- }
+
+ 	// console.log('XR interactivity added');
+}
+
+
+function addDragControls() {
+	let objects = [];
+	objects.push(GUIMesh);
+
+	dragControls = new DragControls( objects, camera, renderer.domElement );
+
+	// add event listener to highlight dragged objects
+	dragControls.addEventListener( 'dragstart', function ( event ) {
+		event.object.material.emissive.set( 0xaaaaaa );
+	} );
+
+	dragControls.addEventListener( 'dragend', function ( event ) {
+		event.object.material.emissive.set( 0x000000 );
+	} );
+}
 
 function loadBackgroundImage() {
 	// first free up resources
@@ -1253,7 +1275,7 @@ function  pointForward() {
 	camera.position.x = 0;
 	camera.position.y = 0;
 	camera.position.z = r;
-	controls.update();
+	orbitControls.update();
 	postStatus('Pointing camera forwards (in -<b>z</b> direction)');
 }
 
@@ -1275,20 +1297,20 @@ function recreateVideoFeeds() {
 function addOrbitControls() {
 	// controls
 
-	controls = new OrbitControls( camera, renderer.domElement );
+	orbitControls = new OrbitControls( camera, renderer.domElement );
 	// controls = new OrbitControls( cameraOutside, renderer.domElement );
-	controls.listenToKeyEvents( window ); // optional
+	orbitControls.listenToKeyEvents( window ); // optional
 
 	//controls.addEventListener( 'change', render ); // call this only in static scenes (i.e., if there is no animation loop)
-	controls.addEventListener( 'change', cameraPositionChanged );
+	orbitControls.addEventListener( 'change', cameraPositionChanged );
 
-	controls.enableDamping = false; // an animation loop is required when either damping or auto-rotation are enabled
-	controls.dampingFactor = 0.05;
+	orbitControls.enableDamping = false; // an animation loop is required when either damping or auto-rotation are enabled
+	orbitControls.dampingFactor = 0.05;
 
-	controls.enablePan = true;
-	controls.enableZoom = true;
+	orbitControls.enablePan = true;
+	orbitControls.enableZoom = true;
 
-	controls.maxPolarAngle = Math.PI;
+	orbitControls.maxPolarAngle = Math.PI;
 }
 
 function cameraPositionChanged() {
