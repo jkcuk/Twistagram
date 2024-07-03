@@ -902,7 +902,7 @@ function createGUI() {
 
 	gui.add( params, 'Visible').onChange( (v) => { raytracingSphereShaderMaterial.uniforms.visible.value = v; } );
 	inFrontOfCameraControl = gui.add( params, 'inFrontOfCamera' ).name( inFrontOfCamera2String() );
-	gui.add( params, 'ipd', 0, 100, 1 ).onChange( (v) => { ipd = v/1000; } ).name( 'interpupillary distance' );
+	gui.add( params, 'ipd', 0, 100, 1 ).onChange( (v) => { ipd = v/1000; } ).name( 'ipd (mm)' );
 	gui.add( params, 'Component radius (cm)', 0, 10).onChange( (r) => { raytracingSphereShaderMaterial.uniforms.radius.value = r/100.; } );
 	gui.add( params, 'Period, <i>p</i> (mm)', 0.1, 10).onChange( (p) => { raytracingSphereShaderMaterial.uniforms.period.value = p/1000.; } );
 	// gui.add( params, 'tan<sup>-1</sup>(additional <i>F</i><sub>1</sub>)', -0.5*Math.PI, 0.5*Math.PI).onChange( (f) => { raytracingSphereShaderMaterial.uniforms.additionalF.value = Math.tan(f); } );
