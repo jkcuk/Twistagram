@@ -40,8 +40,8 @@ let fovScreen = 140;	// approximation to the horizontal visual field -- see http
 let ipd = 0.064;	// interpupillary distance, see https://en.wikipedia.org/wiki/Pupillary_distance#Databases
 let componentDistance = 0.2;
 let alpha = 0.0;
-let centreOfObjectPlane = new THREE.Vector3(0, 0, -10);
-let designViewPosition = new THREE.Vector3(0, 0, 0.04);
+let centreOfObjectPlane = new THREE.Vector3(0, 0, -10);	// in component's coordinate system
+let designViewPosition = new THREE.Vector3(0, 0, 0.04);	// in component's coordinate system
 let inFrontOfCamera = false;
 
 // camera with wide aperture
@@ -65,7 +65,7 @@ let backgroundTexture;
 // the menu
 let gui;
 let GUIMesh;
-let vrControlsVisibleControl, backgroundControl, componentYControl, inFrontOfCameraControl;
+let visibleControl, perfectRotatorVisibleControl, vrControlsVisibleControl, backgroundControl, componentYControl, inFrontOfCameraControl;
 
 // lift the component up to eye level (in case of VR only)
 let componentY = 0.0;
@@ -99,7 +99,7 @@ function init() {
 	scene = new THREE.Scene();
 	// scene.background = new THREE.Color( 'skyblue' );
 	let windowAspectRatio = window.innerWidth / window.innerHeight;
-	camera = new THREE.PerspectiveCamera( fovScreen, windowAspectRatio, 0.01*raytracingSphereRadius, 2*raytracingSphereRadius );
+	camera = new THREE.PerspectiveCamera( fovScreen, windowAspectRatio, 0.01, 2*raytracingSphereRadius );
 	camera.position.z = componentDistance;
 	screenChanged();
 	
@@ -241,42 +241,41 @@ function updateUniforms() {
 
 	// calculate the component's position
 	let componentPosition = new THREE.Vector3();	
-	let comparisonPosition = new THREE.Vector3();	
+	// let comparisonPosition = new THREE.Vector3();	
 	componentPosition.copy(camera.position);	// the camera position
 	componentPosition.addScaledVector(cameraZHat, -componentDistance);	// -componentDistance * zHat
 	componentPosition.addScaledVector(cameraXHat, 0.5*ipd);	// a bit to the right
-	comparisonPosition.copy(componentPosition);
+	// comparisonPosition.copy(componentPosition);
 	// comparisonPosition.addScaledVector(cameraXHat, -0.5*ipd);	// a bit to the left
 
 	// calculate the component's model matrix and its inverse
 	let componentModelMatrix = new THREE.Matrix4();
 	let componentModelMatrixInverse = new THREE.Matrix4();
-	let comparisonModelMatrix = new THREE.Matrix4();
-	let comparisonModelMatrixInverse = new THREE.Matrix4();
+	// let comparisonModelMatrix = new THREE.Matrix4();
+	// let comparisonModelMatrixInverse = new THREE.Matrix4();
 	if(inFrontOfCamera) {
 		componentModelMatrix.copy(camera.matrixWorld);	// the basis vectors are the same as those in the camera's model matrix...
 		componentModelMatrix.setPosition(componentPosition);	// ... but the position isn't the same
-	
-		componentModelMatrixInverse.copy(componentModelMatrix);	// start from the model matrix...
-		componentModelMatrixInverse.invert();	// ... and invert it
 
-		comparisonModelMatrix.copy(camera.matrixWorld);	// the basis vectors are the same as those in the camera's model matrix...
-		comparisonModelMatrix.setPosition(comparisonPosition);	// ... but the position isn't the same
+		// comparisonModelMatrix.copy(camera.matrixWorld);	// the basis vectors are the same as those in the camera's model matrix...
+		// comparisonModelMatrix.setPosition(comparisonPosition);	// ... but the position isn't the same
 	
-		comparisonModelMatrixInverse.copy(comparisonModelMatrix);	// start from the model matrix...
-		comparisonModelMatrixInverse.invert();	// ... and invert it
-
+		// comparisonModelMatrixInverse.copy(comparisonModelMatrix);	// start from the model matrix...
+		// comparisonModelMatrixInverse.invert();	// ... and invert it
 	} else {
-		componentModelMatrix.identity();
-		componentModelMatrixInverse.identity();
+		componentModelMatrix.makeTranslation(0, componentY, 0);
 
-		comparisonModelMatrix.identity();
-		comparisonModelMatrixInverse.identity();
+		// comparisonModelMatrix.identity();
+		// comparisonModelMatrixInverse.identity();
 	}
+		
+	componentModelMatrixInverse.copy(componentModelMatrix);	// start from the model matrix...
+	componentModelMatrixInverse.invert();	// ... and invert it
+
 	raytracingSphereShaderMaterial.uniforms.componentModelMatrix.value = componentModelMatrix;	// set the uniform
 	raytracingSphereShaderMaterial.uniforms.componentModelMatrixInverse.value = componentModelMatrixInverse;	// set the uniform
-	raytracingSphereShaderMaterial.uniforms.comparisonModelMatrix.value = comparisonModelMatrix;	// set the uniform
-	raytracingSphereShaderMaterial.uniforms.comparisonModelMatrixInverse.value = comparisonModelMatrixInverse;	// set the uniform
+	// raytracingSphereShaderMaterial.uniforms.comparisonModelMatrix.value = comparisonModelMatrix;	// set the uniform
+	// raytracingSphereShaderMaterial.uniforms.comparisonModelMatrixInverse.value = comparisonModelMatrixInverse;	// set the uniform
 
 	// if(counter < 10) console.log(`viewDirection = (${viewDirection.x.toPrecision(2)}, ${viewDirection.y.toPrecision(2)}, ${viewDirection.z.toPrecision(2)})`);
 	// raytracingSphereShaderMaterial.uniforms.viewDirection.value = cameraZHat.multiplyScalar(-1);
@@ -284,8 +283,8 @@ function updateUniforms() {
 	// if the component is "glued" to the eye, place it in front of the camera
 	// raytracingSphereShaderMaterial.uniforms.centreOfComponent.value.y = componentY;	// camera.position.y;
 	// raytracingSphereShaderMaterial.uniforms.designViewPosition.value.y = componentY;
-	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.y = componentY;
-	raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.x = componentPosition.x - 0.064;
+	// raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.y = componentY;
+	// raytracingSphereShaderMaterial.uniforms.centreOfPerfectRotator.value.x = componentPosition.x - 0.064;
 
 
 	raytracingSphereShaderMaterial.uniforms.noOfRays.value = noOfRays;
@@ -334,6 +333,7 @@ function addRaytracingSphere() {
 		// wireframe: true,
 		uniforms: {
 			visible: { value: true },
+			perfectRotatorVisible: { value: true },
 			period: { value: 0.001 },
 			cosAlpha: { value: 1.0 },
 			sinAlpha: { value: 0.0	},
@@ -342,9 +342,9 @@ function addRaytracingSphere() {
 			componentModelMatrix: { value: new THREE.Matrix4() },
 			componentModelMatrixInverse: { value: new THREE.Matrix4() },
 			// centreOfComponent: { value: new THREE.Vector3(0, 0, 0) },	// principal point of lenslet (0, 0)
-			comparisonModelMatrix: { value: new THREE.Matrix4() },
-			comparisonModelMatrixInverse: { value: new THREE.Matrix4() },
-			centreOfPerfectRotator: { value: new THREE.Vector3(0, 0, 0) },
+			// comparisonModelMatrix: { value: new THREE.Matrix4() },
+			// comparisonModelMatrixInverse: { value: new THREE.Matrix4() },
+			// centreOfPerfectRotator: { value: new THREE.Vector3(0, 0, 0) },
 			centreOfObjectPlane: { value: centreOfObjectPlane },
 			designViewPosition: { value: designViewPosition },
 			radius: { value: 0.05 },	// radius
@@ -392,16 +392,16 @@ function addRaytracingSphere() {
 			uniform mat4 componentModelMatrix;
 			uniform mat4 componentModelMatrixInverse;
 			uniform bool visible;
+			uniform bool perfectRotatorVisible;
 			uniform float cosAlpha;	// cos of rotation angle
 			uniform float sinAlpha;	// sin of rotation angle
 			uniform float stretchFactor;
 			uniform float period;	// period of array
 			uniform float additionalF;	// additional focal length (an additional lens in the same plane)
 			// uniform vec3 centreOfComponent;	// centre of wedge array
-
-			uniform mat4 comparisonModelMatrix;
-			uniform mat4 comparisonModelMatrixInverse;
-			uniform vec3 centreOfPerfectRotator;
+			// uniform mat4 comparisonModelMatrix;
+			// uniform mat4 comparisonModelMatrixInverse;
+			// uniform vec3 centreOfPerfectRotator;
 			uniform float radius;	// radius of wedge array
 			uniform vec3 centreOfObjectPlane;
 			uniform vec3 designViewPosition;
@@ -733,19 +733,26 @@ function addRaytracingSphere() {
 
 						// deflect the light-ray direction accordingly 
 
-						if(wedgeArrayVisible) d = zWedgeArrayDeflect(d, p);
-						if(perfectRotatorVisible) perfectRotatorDeflect(p, d);
-						// d = lensDeflect(d, cixy, overallF);
+						if(wedgeArrayVisible) {
+							d = zWedgeArrayDeflect(d, p);
 
-						// lower the brightness factor, giving the light a blue tinge
-						b *= vec4(0.9, 0.9, 0.99, 1);
+							// lower the brightness factor, giving the light a blue tinge
+							b *= vec4(0.9, 0.9, 0.99, 1);
+						}
+						if(perfectRotatorVisible) {
+							perfectRotatorDeflect(p, d);
+
+							// lower the brightness factor, giving the light a blue tinge
+							b *= vec4(0.9, 0.9, 0.99, 1);
+						}
+						// d = lensDeflect(d, cixy, overallF);
 					} 
 				} // else b *= vec4(0.99, 0.9, 0.9, 1);	// this shouldn't happen -- give the light a red tinge
 				p = (componentModelMatrix*vec4(p,1)).xyz;
 				d = (componentModelMatrix*vec4(d,0)).xyz;
 			}
 
-			void passThroughPerfectRotator(
+/* 			void passThroughPerfectRotator(
 				inout vec3 p, 
 				inout vec3 d, 
 				inout vec4 b
@@ -773,7 +780,7 @@ function addRaytracingSphere() {
 				p = (comparisonModelMatrix*vec4(p,1)).xyz;
 				d = (comparisonModelMatrix*vec4(d,0)).xyz;
 			}
-
+ */
 			// propagate the ray to the plane of the video feed, which is a z-distance <videoDistance> away,
 			// and return either the color of the corresponding video-feed texel or the background color
 			vec4 getColorOfVideoFeed(
@@ -833,14 +840,14 @@ function addRaytracingSphere() {
 					if(d.z < 0.0) {
 						// the ray is travelling "forwards", in the (-z) direction;
 						// pass first through the array, then to environment-facing video feed
-						passThroughWedgeArray(p, d, b, visible, true);
+						passThroughWedgeArray(p, d, b, visible, perfectRotatorVisible);
 						// passThroughPerfectRotator(p, d, b);
 						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, -videoDistance, videoFeedETexture, halfWidthE, halfHeightE, vec4(1, 1, 1, 1.0));
 						else color = getColorOfBackground(d);
 					} else {
 						// the ray is travelling "backwards", in the (+z) direction;
 						// pass first through the array, then to user-facing video feed
-						passThroughWedgeArray(p, d, b, visible, true);
+						passThroughWedgeArray(p, d, b, visible, perfectRotatorVisible);
 						// passThroughPerfectRotator(p, d, b);
 						if(showVideoFeed) color = getColorOfVideoFeed(p, d, b, videoDistance, videoFeedUTexture, halfWidthU, halfHeightU, vec4(1, 1, 1, 1.0));
 						else color = getColorOfBackground(d);
@@ -865,7 +872,15 @@ function createGUI() {
 	// gui.hide();
 
 	const params = {
-		'Visible': raytracingSphereShaderMaterial.uniforms.visible.value,
+		// 'Visible': raytracingSphereShaderMaterial.uniforms.visible.value,
+		visible: function() {
+			raytracingSphereShaderMaterial.uniforms.visible.value = !raytracingSphereShaderMaterial.uniforms.visible.value;
+			visibleControl.name( visible2String() );
+		},
+		perfectRotatorVisible: function() {
+			raytracingSphereShaderMaterial.uniforms.perfectRotatorVisible.value = !raytracingSphereShaderMaterial.uniforms.perfectRotatorVisible.value;
+			perfectRotatorVisibleControl.name( perfectRotatorVisible2String() );
+		},
 		inFrontOfCamera: function() { 
 			inFrontOfCamera = !inFrontOfCamera;
 			inFrontOfCameraControl.name( inFrontOfCamera2String() );
@@ -878,7 +893,11 @@ function createGUI() {
 		'Stretch factor': raytracingSphereShaderMaterial.uniforms.stretchFactor.value,
 		componentDistance: componentDistance,
 		componentY: componentY,
-		makeEyeLevel: function() { componentY = camera.position.y; componentYControl.setValue(componentY); },
+		makeEyeLevel: function() { 
+			componentY = camera.position.y;
+			// componentYControl.setValue(componentY);
+			GUIMesh.position.y = componentY - 1.5;
+		},
 		'Horiz. FOV (&deg;)': fovScreen,
 		'Aperture radius (mm)': 1000.*raytracingSphereShaderMaterial.uniforms.apertureRadius.value,
 		'tan<sup>-1</sup>(focus. dist.) (m)': Math.atan(focusDistance),
@@ -903,7 +922,9 @@ function createGUI() {
 		},
 	}
 
-	gui.add( params, 'Visible').onChange( (v) => { raytracingSphereShaderMaterial.uniforms.visible.value = v; } );
+	// gui.add( params, 'Visible').onChange( (v) => { raytracingSphereShaderMaterial.uniforms.visible.value = v; } );
+	visibleControl = gui.add( params, 'visible' ).name( visible2String() );
+	perfectRotatorVisibleControl = gui.add( params, 'perfectRotatorVisible' ).name( perfectRotatorVisible2String() );
 	inFrontOfCameraControl = gui.add( params, 'inFrontOfCamera' ).name( inFrontOfCamera2String() );
 	gui.add( params, 'ipd', 0, 100, 1 ).onChange( (v) => { ipd = v/1000; } ).name( 'ipd (mm)' );
 	gui.add( params, 'Component radius (cm)', 0, 10).onChange( (r) => { raytracingSphereShaderMaterial.uniforms.radius.value = r/100.; } );
@@ -913,7 +934,7 @@ function createGUI() {
 	gui.add( params, 'Stretch factor', 0.1, 10 ).onChange( (m) => { raytracingSphereShaderMaterial.uniforms.stretchFactor.value = m; } );
 	gui.add( params, 'componentDistance', 0.001, 0.2, 0.001 ).name( 'distance' ).onChange( (d) => { componentDistance = d; } );
 	componentYControl = gui.add( params, 'componentY',  0, 3, 0.001).name( "<i>y</i><sub>centre</sub>" ).onChange( (y) => { componentY = y; } );
-	gui.add( params, 'makeEyeLevel' ).name( 'Move resonator to eye level' );
+	gui.add( params, 'makeEyeLevel' ).name( 'Move to eye level' );
 	
 	gui.add( params, 'Point (virtual) cam. forward (in -<b>z</b> direction)');
 	gui.add( params, 'Horiz. FOV (&deg;)', 10, 170, 1).onChange( setScreenFOV );
@@ -933,14 +954,29 @@ function createGUI() {
 	gui.add( params, 'tan<sup>-1</sup>(video dist.)', Math.atan(0.1), 0.5*Math.PI).onChange( (a) => { raytracingSphereShaderMaterial.uniforms.videoDistance.value = Math.tan(a); } );
 	gui.add( params, 'Show/hide info');
 
-	if(renderer.xr.enabled) {
+	// if(renderer.xr.enabled) {
 		vrControlsVisibleControl = gui.add( params, 'vrControlsVisible' );
 
 		// create the GUI mesh at the end to make sure that it includes all controls
 		GUIMesh = new HTMLMesh( gui.domElement );
+		GUIMesh.position.x = 0;
+		GUIMesh.position.y = 1;	// componentY - 1.5;
+		GUIMesh.position.z = -0.4;
+		GUIMesh.rotation.x = 0;	// -Math.PI/4;
+		GUIMesh.scale.setScalar( 2 );
+		scene.add( GUIMesh );	
+	
 		GUIMesh.visible = false;
 		vrControlsVisibleControl.name( guiMeshVisible2String() );	// this can be called only after GUIMesh has been created
-	}
+	// }
+}
+
+function visible2String() {
+	return 'Rotator '+(raytracingSphereShaderMaterial.uniforms.visible.value?'visible':'hidden');
+}
+
+function perfectRotatorVisible2String() {
+	return 'Perfect rotator '+ (raytracingSphereShaderMaterial.uniforms.perfectRotatorVisible.value?'visible':'hidden');
 }
 
 function guiMeshVisible2String() {
@@ -948,7 +984,7 @@ function guiMeshVisible2String() {
 }
 
 function inFrontOfCamera2String() {
-	return inFrontOfCamera?'In front of Camera':'At origin';
+	return 'Rotators ' + (inFrontOfCamera?'in front of Camera':'at origin');
 }
 
 function addXRInteractivity() {
@@ -989,13 +1025,13 @@ function addXRInteractivity() {
 
 	// place this below the resonator
 	// GUIMesh = new HTMLMesh( gui.domElement );
-	GUIMesh.position.x = 0;
+/* 	GUIMesh.position.x = 0;
 	GUIMesh.position.y = componentY - 1.5;
 	GUIMesh.position.z = -0.4;
 	GUIMesh.rotation.x = -Math.PI/4;
 	GUIMesh.scale.setScalar( 2 );
 	group.add( GUIMesh );	
-}
+ */}
 
 function loadBackgroundImage() {
 	// first free up resources
